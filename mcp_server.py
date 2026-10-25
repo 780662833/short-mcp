@@ -7,6 +7,7 @@ from generation import attach_clip as attach_clip_impl
 from generation import prepare_generation_jobs as prepare_jobs_impl
 from generation import review_clip as review_clip_impl
 from generation import validate_assets as validate_assets_impl
+from generation import validate_generation_readiness as validate_readiness_impl
 
 mcp = FastMCP("short-mcp")
 
@@ -15,6 +16,12 @@ mcp = FastMCP("short-mcp")
 def validate_assets(project: str = "projects/chaidan_couple") -> dict:
     """Read-only validation of storyboard, character/look references, and asset paths."""
     return validate_assets_impl(project)
+
+
+@mcp.tool()
+def validate_generation_readiness(project: str = "projects/chaidan_couple") -> dict:
+    """Validate that every character/look used by the storyboard has at least one existing reference image."""
+    return validate_readiness_impl(project)
 
 
 @mcp.tool()
