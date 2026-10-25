@@ -53,6 +53,10 @@ class PromptTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(first[0], "竖屏写实，近景，居中，固定身份，西装，转头，柔光，推进")
         self.assertEqual(first[1], "不要水印")
+        real_shot = Shot(id=1, start=0, duration=1, characters=[{"char_id": "lead", "look": "real"}])
+        real_prompt = build_prompt(real_shot, chars, style)
+        self.assertTrue(real_prompt[0].startswith("居家写实，"))
+        self.assertEqual(real_prompt[1], "不要水印")
 
     def test_asset_validation_collects_missing_reference(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -61,8 +65,11 @@ class PromptTests(unittest.TestCase):
             (root / "characters.json").write_text(json.dumps({"lead":{"char_id":"lead","identity":"x","looks":{"glam":{"description":"x","ref_images":["refs/missing.png"]}}}}), encoding="utf-8")
             (root / "style.json").write_text(json.dumps({"base_glam":"x","base_real":"x","negative":"x"}), encoding="utf-8")
             report = validate_assets(root)
-            self.assertFalse(report["ok"])
-            self.assertTrue(any("参考图不存在" in e for e in report["errors"]))
+            self.assertTrue(report["structure_ok"], report["errors"])
+            self.assertTrue(any("参考图文件不存在" in warning for warning in report["warnings"]))
+            readiness = validate_generation_readiness(root)
+            self.assertFalse(readiness["ready"])
+            self.assertTrue(any("lead/glam" in issue for issue in readiness["readiness_errors"]))
 
     def test_project_assets_validate(self):
         report = validate_assets("projects/chaidan_couple")
