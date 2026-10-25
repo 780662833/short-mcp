@@ -18,6 +18,12 @@ class SpeechTimingTests(unittest.TestCase):
     def test_single_turn_has_no_turn_gap(self):
         self.assertAlmostEqual(speech_need("女：剪蓝线！"), 0.6)
 
+    def test_shot_six_and_nine_estimates(self):
+        self.assertAlmostEqual(
+            speech_need("男：增高垫还没拆！女：发片也没摘！"), 2.5
+        )
+        self.assertAlmostEqual(speech_need("男&女：重新装！"), 0.6)
+
     def test_rejects_non_finite_timeline_values(self):
         data = {
             "title": "invalid",
@@ -47,6 +53,8 @@ class SpeechTimingTests(unittest.TestCase):
         message = str(caught.exception)
         for shot_id in (3, 4, 5, 6, 8):
             self.assertIn(f"镜头{shot_id}", message)
+        self.assertIn("超出", message)
+        self.assertEqual(message.count("台词预计"), 5)
 
 
 if __name__ == "__main__":
