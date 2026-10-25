@@ -173,7 +173,7 @@ def _probe_duration(path: Path) -> float:
 
 def _job_files(root: Path) -> list[Path]:
     jobs_dir = root / "jobs"
-    return sorted(jobs_dir.glob("shot-*.json")) if jobs_dir.exists() else []
+    return sorted(jobs_dir.glob("shot-*.json"), key=lambda p: (p.stat().st_mtime_ns, p.name)) if jobs_dir.exists() else []
 
 
 def attach_clip(project: str | Path, shot_id: int, path: str) -> dict:
@@ -195,7 +195,7 @@ def attach_clip(project: str | Path, shot_id: int, path: str) -> dict:
             pending_jobs.append((job_path, GenJob.model_validate(data)))
     if not pending_jobs:
         raise ValueError(f"镜头{shot_id}没有 prepared 状态的任务单；请先准备新任务")
-    job_path, job = pending_jobs[-1]
+    job_path, job = max(pending_jobs, key=lambda pair: (pair[0].stat().st_mtime_ns, pair[0].name))
     job.status = "generated"
     job.clip = Path(path).as_posix()
     job.actual_duration = actual_duration
@@ -227,7 +227,7 @@ def review_clip(project: str | Path, shot_id: int, verdict: str, note: str = "")
             candidates.append((job_path, GenJob.model_validate(data)))
     if not candidates:
         raise ValueError(f"镜头{shot_id}没有待人工验收的 generated 任务")
-    job_path, job = candidates[-1]
+    job_path, job = max(candidates, key=lambda pair: (pair[0].stat().st_mtime_ns, pair[0].name))
     job.status = verdict
     job.review_note = note
     job_path.write_text(job.model_dump_json(indent=2) + "\n", encoding="utf-8")
