@@ -32,10 +32,10 @@ class SchemaTests(unittest.TestCase):
         self.assertAlmostEqual(speech_need("男：你好。女：收到。"), 1.1)
 
     def test_seed_and_status_contracts(self):
-        job = GenJob(job_id="job-a", shot_id=1, prompt="p", negative_prompt="n", seed=123, seed_support="best_effort")
+        job = GenJob(job_id="job-a", shot_id=1, attempt=1, expected_clip_path="clips/shot_01_try1.mp4", prompt="p", negative_prompt="n", seed=123, seed_support="best_effort")
         self.assertEqual(job.seed, 123)
         with self.assertRaises(ValidationError):
-            GenJob(job_id="job-b", shot_id=1, prompt="p", negative_prompt="n", seed_support="always_deterministic")
+            GenJob(job_id="job-b", shot_id=1, attempt=1, expected_clip_path="clips/shot_01_try1.mp4", prompt="p", negative_prompt="n", seed_support="always_deterministic")
 
 
 class PromptTests(unittest.TestCase):
@@ -70,12 +70,19 @@ class JobPreparationTests(unittest.TestCase):
     def _add_real_refs(self, project: Path):
         refs = project / "refs"
         refs.mkdir(exist_ok=True)
-        for name, data in (("male_glam.png", b"male-v1"), ("female_glam.png", b"female-v1")):
+        for name, data in (
+            ("male_glam.png", b"male-glam-v1"),
+            ("female_glam.png", b"female-glam-v1"),
+            ("male_real.png", b"male-real-v1"),
+            ("female_real.png", b"female-real-v1"),
+        ):
             (refs / name).write_bytes(data)
         chars_path = project / "characters.json"
         chars = json.loads(chars_path.read_text(encoding="utf-8"))
         chars["male_lead"]["looks"]["glam"]["ref_images"] = ["refs/male_glam.png"]
         chars["female_lead"]["looks"]["glam"]["ref_images"] = ["refs/female_glam.png"]
+        chars["male_lead"]["looks"]["real"]["ref_images"] = ["refs/male_real.png"]
+        chars["female_lead"]["looks"]["real"]["ref_images"] = ["refs/female_real.png"]
         chars_path.write_text(json.dumps(chars, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def test_missing_reference_blocks_jobs_without_prepared_manifests(self):
