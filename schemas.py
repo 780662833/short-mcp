@@ -49,12 +49,13 @@ class Character(BaseModel):
     model_config = ConfigDict(extra="forbid")
     char_id: str
     identity: str
-    looks: dict[str, Look]
+    looks: dict[Literal["glam", "half", "real"], Look]
 
 
 class Style(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    base: str
+    base_glam: str
+    base_real: str
     negative: str
 
 
@@ -110,8 +111,8 @@ class Storyboard(BaseModel):
             if abs(shot.start - t) > TIMELINE_TOLERANCE + 1e-12:
                 errors.append(f"镜头{shot.id}: start应为{t:g}，实际{shot.start:g}")
             t += shot.duration
-            if len(shot.subtitle) > 12:
-                errors.append(f"镜头{shot.id}: 字幕{len(shot.subtitle)}字，超过12字")
+            if len(shot.subtitle) > 40:
+                errors.append(f"镜头{shot.id}: 字幕{len(shot.subtitle)}个字符，超过40字符")
             need = speech_need(shot.dialogue)
             if need > shot.duration + TIMELINE_TOLERANCE:
                 errors.append(f"镜头{shot.id}: 台词预计{need:.1f}s，镜头{shot.duration:g}s，超出{need - shot.duration:.1f}s")
