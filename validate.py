@@ -1,7 +1,9 @@
 import json
+import math
 import re
 import sys
 from pathlib import Path
+from typing import List
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -41,23 +43,30 @@ class Storyboard(BaseModel):
     title: str
     total_duration: float = Field(gt=0)
     bgm: str = ""
-    shots: list[Shot] = Field(min_length=1)
+    shots: List[Shot] = Field(min_length=1)
 
     @model_validator(mode="after")
     def check_timeline(self):
+        if not math.isfinite(self.total_duration):
+            raise ValueError("total_duration必须是有限数值")
+
         t = 0.0
         for expected_id, shot in enumerate(self.shots, start=1):
+            if not math.isfinite(shot.start):
+                raise ValueError(f"镜头{shot.id}: start必须是有限数值")
+            if not math.isfinite(shot.duration):
+                raise ValueError(f"镜头{shot.id}: duration必须是有限数值")
             if shot.id != expected_id:
                 raise ValueError(
                     f"镜头编号应连续从1开始：第{expected_id}个位置实际是镜头{shot.id}"
                 )
-            if abs(shot.start - t) > TIMELINE_TOLERANCE:
+            if abs(shot.start - t) > TIMELINE_TOLERANCE + 1e-12:
                 raise ValueError(
                     f"镜头{shot.id}: start应为{t:.3f}，实际{shot.start}"
                 )
             t += shot.duration
 
-        if abs(t - self.total_duration) > TIMELINE_TOLERANCE:
+        if abs(t - self.total_duration) > TIMELINE_TOLERANCE + 1e-12:
             raise ValueError(
                 f"时长之和{t:.3f} ≠ total_duration {self.total_duration}"
             )
