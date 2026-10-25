@@ -11,7 +11,11 @@
       "dialogue": "",
       "subtitle": "外人眼中的神仙眷侣",
       "sfx": "高级钢琴，门咔哒，唱片划停",
-      "clip": "shot_01.mp4"
+      "clip": "shot_01.mp4",
+      "source": "ai",
+      "prompt": "",
+      "ref_image": "",
+      "seed": null
     },
     {
       "id": 2,
@@ -21,7 +25,11 @@
       "dialogue": "男：行动！女：收到！",
       "subtitle": "拆弹倒计时 00:09",
       "sfx": "紧张拆弹鼓点起",
-      "clip": "shot_02.mp4"
+      "clip": "shot_02.mp4",
+      "source": "ai",
+      "prompt": "",
+      "ref_image": "",
+      "seed": null
     },
     {
       "id": 3,
@@ -31,7 +39,11 @@
       "dialogue": "女：假睫毛！男：拆束腰！",
       "subtitle": "目标一：假睫毛",
       "sfx": "滋啦，啪，咚",
-      "clip": "shot_03.mp4"
+      "clip": "shot_03.mp4",
+      "source": "ai",
+      "prompt": "",
+      "ref_image": "",
+      "seed": null
     },
     {
       "id": 4,
@@ -41,7 +53,11 @@
       "dialogue": "女：红线蓝线？男：蓝线！",
       "subtitle": "发胶定型：红线还是蓝线",
       "sfx": "沙沙声，滴滴倒计时",
-      "clip": "shot_04.mp4"
+      "clip": "shot_04.mp4",
+      "source": "ai",
+      "prompt": "",
+      "ref_image": "",
+      "seed": null
     },
     {
       "id": 5,
@@ -51,7 +67,11 @@
       "dialogue": "女：一击必杀！",
       "subtitle": "素颜已解锁",
       "sfx": "duang",
-      "clip": "shot_05.mp4"
+      "clip": "shot_05.mp4",
+      "source": "ai",
+      "prompt": "",
+      "ref_image": "",
+      "seed": null
     },
     {
       "id": 6,
@@ -61,7 +81,11 @@
       "dialogue": "男：增高垫！女：发片！",
       "subtitle": "倒计时 00:02",
       "sfx": "急促鼓点，嗖",
-      "clip": "shot_06.mp4"
+      "clip": "shot_06.mp4",
+      "source": "ai",
+      "prompt": "",
+      "ref_image": "",
+      "seed": null
     },
     {
       "id": 7,
@@ -71,7 +95,11 @@
       "dialogue": "",
       "subtitle": "拆弹成功",
       "sfx": "叮，鼓点戛然而止",
-      "clip": "shot_07.mp4"
+      "clip": "shot_07.mp4",
+      "source": "ai",
+      "prompt": "",
+      "ref_image": "",
+      "seed": null
     },
     {
       "id": 8,
@@ -81,7 +109,11 @@
       "dialogue": "女：装得挺像。男：彼此。",
       "subtitle": "下班后才是真实的我们",
       "sfx": "魔性土味神曲起，嚼薯片声",
-      "clip": "shot_08.mp4"
+      "clip": "shot_08.mp4",
+      "source": "ai",
+      "prompt": "",
+      "ref_image": "",
+      "seed": null
     },
     {
       "id": 9,
@@ -91,7 +123,11 @@
       "dialogue": "男&女：重新装！",
       "subtitle": "体面只维持到关门前",
       "sfx": "敲门声，音乐急停",
-      "clip": "shot_09.mp4"
+      "clip": "shot_09.mp4",
+      "source": "ai",
+      "prompt": "",
+      "ref_image": "",
+      "seed": null
     }
   ]
 }
