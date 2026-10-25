@@ -270,6 +270,74 @@ def audit_reference_images(project: str | Path = DEFAULT_PROJECT) -> dict:
     }
 
 
+
+def build_reference_pack_plan(project: str | Path = DEFAULT_PROJECT) -> dict:
+    """Create a deterministic, read-only acquisition checklist for every character look."""
+    root = _project_path(project)
+    try:
+        storyboard, characters, _style, load_errors = _load_project(root)
+    except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
+        return {
+            "status": "invalid",
+            "project": root.name,
+            "errors": [str(exc)],
+            "items": [],
+            "generation_api_called": False,
+            "human_review_required": True,
+        }
+    if load_errors:
+        return {
+            "status": "invalid",
+            "project": root.name,
+            "errors": load_errors,
+            "items": [],
+            "generation_api_called": False,
+            "human_review_required": True,
+        }
+
+    shot_map: dict[tuple[str, str], list[int]] = {}
+    for shot in storyboard.shots:
+        for cast in shot.characters:
+            shot_map.setdefault((cast.char_id, cast.look), []).append(shot.id)
+
+    items: list[dict] = []
+    for char_id, character in sorted(characters.items()):
+        for look_name, look in sorted(character.looks.items()):
+            refs = list(dict.fromkeys(look.ref_images))
+            target = refs[0] if refs else f"refs/{char_id}_{look_name}.png"
+            items.append({
+                "char_id": char_id,
+                "look": look_name,
+                "identity": character.identity,
+                "look_description": look.description,
+                "used_by_shots": sorted(set(shot_map.get((char_id, look_name), []))),
+                "configured_refs": refs,
+                "suggested_target_path": target,
+                "reference_brief": (
+                    f"{character.identity}；造型：{look.description}。"
+                    "制作单人角色参考图：角色完整且清晰可见，采用中性简单背景、均匀光线、"
+                    "自然站姿和正面或轻微四分之三视角；画面只出现该角色，不添加文字、"
+                    "水印或其他人物。保持可用于后续镜头匹配的面部特征、发型和体型；"
+                    "本图只定义该角色的当前造型，不要混合其他造型。"
+                ),
+                "status": "configured" if refs else "missing",
+                "human_approval_required": True,
+            })
+    missing = sum(item["status"] == "missing" for item in items)
+    return {
+        "status": "ready_for_collection" if missing == 0 else "needs_reference_images",
+        "project": root.name,
+        "storyboard_shot_count": len(storyboard.shots),
+        "required_look_count": len(items),
+        "missing_look_count": missing,
+        "items": items,
+        "read_only": True,
+        "generation_api_called": False,
+        "images_created": False,
+        "human_review_required": True,
+    }
+
+
 def validate_generation_readiness(project: str | Path = DEFAULT_PROJECT) -> dict:
     """Validate structure plus at least one existing reference image for each used character/look."""
     root = _project_path(project)
