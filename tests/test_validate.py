@@ -46,7 +46,11 @@ class SchemaTests(unittest.TestCase):
 class PromptTests(unittest.TestCase):
     def test_prompt_order_and_repeatability(self):
         shot = Shot(id=1, start=0, duration=1, shot_type="近景", composition="居中", action="转头", lighting="柔光", camera_move="推进", characters=[{"char_id": "lead", "look": "glam"}])
-        chars = {"lead": Character(char_id="lead", identity="固定身份", looks={"glam": Look(description="西装", ref_images=[])})}
+        chars = {"lead": Character(char_id="lead", identity="固定身份", looks={
+            "glam": Look(description="西装", ref_images=[]),
+            "half": Look(description="过渡造型", ref_images=[]),
+            "real": Look(description="居家服", ref_images=[]),
+        })}
         style = Style(base_glam="竖屏写实", base_real="居家写实", negative="不要水印")
         first = build_prompt(shot, chars, style)
         second = build_prompt(shot, chars, style)
