@@ -384,6 +384,137 @@ def _job_files(root: Path) -> list[Path]:
     return sorted(jobs_dir.glob("shot-*.json"), key=lambda p: (p.stat().st_mtime_ns, p.name)) if jobs_dir.exists() else []
 
 
+def validate_clip(
+    project: str | Path,
+    path: str,
+    *,
+    shot_id: int | None = None,
+    require_audio: bool = False,
+    min_height: int = 960,
+) -> dict:
+    """Run read-only ffprobe checks on an existing clip; never renders or modifies files."""
+    root = _project_path(project)
+    errors: list[str] = []
+    warnings: list[str] = []
+    try:
+        clip_path = _safe_project_file(root, path)
+    except ValueError as exc:
+        return {"status": "failed", "path": path, "errors": [str(exc)], "warnings": [], "checks": {}, "probe": None}
+    if not clip_path.is_file():
+        return {"status": "failed", "path": path, "errors": [f"视频素材不存在：{path}"], "warnings": [], "checks": {}, "probe": None}
+    if clip_path.stat().st_size == 0:
+        return {"status": "failed", "path": path, "errors": [f"视频素材为空文件：{path}"], "warnings": [], "checks": {}, "probe": None}
+    if clip_path.suffix.lower() != ".mp4":
+        return {"status": "failed", "path": path, "errors": ["素材必须使用 .mp4 扩展名"], "warnings": [], "checks": {}, "probe": None}
+
+    expected_duration = None
+    if shot_id is not None:
+        try:
+            storyboard, _chars, _style, load_errors = _load_project(root)
+            if load_errors:
+                raise ValueError("; ".join(load_errors))
+            shot = next((item for item in storyboard.shots if item.id == shot_id), None)
+            if shot is None:
+                raise ValueError(f"不存在的镜头编号：{shot_id}")
+            expected_duration = shot.duration
+        except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
+            return {"status": "failed", "path": path, "errors": [str(exc)], "warnings": [], "checks": {}, "probe": None}
+
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(clip_path)],
+            check=True, capture_output=True, text=True,
+        )
+        probe = json.loads(result.stdout)
+        streams = probe.get("streams", [])
+        video_streams = [stream for stream in streams if stream.get("codec_type") == "video"]
+        audio_streams = [stream for stream in streams if stream.get("codec_type") == "audio"]
+        if not video_streams:
+            errors.append("未检测到视频流")
+            video = {}
+        else:
+            video = video_streams[0]
+        fmt = probe.get("format", {})
+        try:
+            duration = float(fmt.get("duration") or video.get("duration"))
+            if not math.isfinite(duration) or duration <= 0:
+                raise ValueError()
+        except (TypeError, ValueError):
+            duration = None
+            errors.append("无法读取有效的视频时长")
+        try:
+            width, height = int(video["width"]), int(video["height"])
+        except (KeyError, TypeError, ValueError):
+            width, height = None, None
+            if video_streams:
+                errors.append("无法读取视频分辨率")
+        if width and height:
+            if height < min_height:
+                errors.append(f"视频高度 {height}px 低于最低要求 {min_height}px")
+            if width >= height:
+                errors.append(f"视频不是竖屏：{width}x{height}")
+            elif abs((width / height) - (9 / 16)) > 0.03:
+                warnings.append(f"画面比例 {width}:{height} 偏离 9:16")
+        fps = None
+        rate = video.get("avg_frame_rate") or video.get("r_frame_rate")
+        if rate and rate != "0/0":
+            try:
+                numerator, denominator = rate.split("/", 1)
+                fps = float(numerator) / float(denominator)
+                if not math.isfinite(fps) or fps <= 0:
+                    fps = None
+            except (ValueError, ZeroDivisionError):
+                fps = None
+        if fps is None and video_streams:
+            warnings.append("无法读取有效帧率")
+        if not audio_streams:
+            message = "未检测到音频流"
+            (errors if require_audio else warnings).append(message)
+        if expected_duration is not None and duration is not None:
+            delta = abs(duration - expected_duration)
+            if delta > 0.25:
+                errors.append(f"时长偏差 {delta:.3f}s，分镜要求 {expected_duration:.3f}s，实际 {duration:.3f}s")
+
+        checks = {
+            "has_video": bool(video_streams),
+            "vertical": bool(width and height and height > width),
+            "min_resolution": bool(height and height >= min_height),
+            "duration_match": None if expected_duration is None or duration is None else abs(duration - expected_duration) <= 0.25,
+            "has_audio": bool(audio_streams),
+        }
+        summary = {
+            "duration": duration,
+            "width": width,
+            "height": height,
+            "video_codec": video.get("codec_name"),
+            "fps": round(fps, 3) if fps is not None else None,
+            "audio_codec": audio_streams[0].get("codec_name") if audio_streams else None,
+            "size_bytes": clip_path.stat().st_size,
+        }
+        return {
+            "status": "passed" if not errors else "failed",
+            "path": Path(path).as_posix(),
+            "shot_id": shot_id,
+            "expected_duration": expected_duration,
+            "checks": checks,
+            "probe": summary,
+            "errors": errors,
+            "warnings": warnings,
+            "human_review_required": True,
+        }
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+        return {
+            "status": "failed",
+            "path": Path(path).as_posix(),
+            "shot_id": shot_id,
+            "checks": {},
+            "probe": None,
+            "errors": [f"ffprobe 检查失败：{exc}"],
+            "warnings": [],
+            "human_review_required": True,
+        }
+
+
 def attach_clip(project: str | Path, shot_id: int, path: str) -> dict:
     root = _project_path(project)
     storyboard, _chars, _style, _errors = _load_project(root)
