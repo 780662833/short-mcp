@@ -60,7 +60,7 @@ def validate_assets(project: str | Path = DEFAULT_PROJECT) -> dict:
         storyboard, characters, _style, load_errors = _load_project(root)
         errors.extend(load_errors)
     except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
-        return {"ok": False, "errors": [str(exc)], "warnings": [], "checked_refs": []}
+        return {"ok": False, "structure_ok": False, "ready": False, "errors": [str(exc)], "readiness_errors": [], "warnings": [], "checked_refs": []}
 
     checked_refs: list[dict] = []
     for shot in storyboard.shots:
@@ -77,7 +77,8 @@ def validate_assets(project: str | Path = DEFAULT_PROJECT) -> dict:
                 try:
                     path = _safe_project_file(root, ref)
                     if not path.is_file():
-                        errors.append(f"镜头{shot.id}: 参考图不存在：{ref}")
+                        # Missing files are readiness failures, not malformed structure.
+                        warnings.append(f"镜头{shot.id}: 参考图文件不存在：{ref}")
                         continue
                     digest = hashlib.sha256(path.read_bytes()).hexdigest()
                     checked_refs.append({"path": ref, "sha256": digest})
@@ -99,8 +100,17 @@ def validate_generation_readiness(project: str | Path = DEFAULT_PROJECT) -> dict
         for item in shot.characters:
             char = characters[item.char_id]
             look = char.looks[item.look]
-            # An empty list is structurally valid but not generation-ready.
-            if not look.ref_images:
+            # Empty lists and lists containing no existing files are both blocked at readiness time.
+            existing_refs = []
+            for ref in look.ref_images:
+                try:
+                    ref_path = _safe_project_file(root, ref)
+                    if ref_path.is_file():
+                        existing_refs.append(ref)
+                except ValueError:
+                    # Normally caught by structural validation; fail closed if encountered here.
+                    pass
+            if not existing_refs:
                 missing_refs.setdefault((item.char_id, item.look), set()).add(shot.id)
     readiness_errors = [
         f"缺少 {char_id}/{look} 参考图（镜头 {', '.join(map(str, sorted(shot_ids)))})"
