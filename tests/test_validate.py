@@ -90,6 +90,45 @@ class SpeechTimingTests(unittest.TestCase):
         self.assertIn("\n", message)
         self.assertNotIn("\\n", message)
 
+    def test_shot_asset_generation_fields(self):
+        base = {
+            "title": "asset fields",
+            "total_duration": 1,
+            "shots": [{
+                "id": 1,
+                "start": 0,
+                "duration": 1,
+                "scene": "A character turns toward camera",
+                "source": "ai",
+                "prompt": "Vertical cinematic shot",
+                "ref_image": "assets/characters/lead.png",
+                "seed": 1234,
+            }],
+        }
+        storyboard = Storyboard.model_validate(base)
+        self.assertEqual(storyboard.shots[0].source, "ai")
+        self.assertEqual(storyboard.shots[0].prompt, "Vertical cinematic shot")
+        self.assertEqual(storyboard.shots[0].ref_image, "assets/characters/lead.png")
+        self.assertEqual(storyboard.shots[0].seed, 1234)
+
+        base["shots"][0]["source"] = "shoot"
+        self.assertEqual(Storyboard.model_validate(base).shots[0].source, "shoot")
+
+    def test_shot_source_rejects_unknown_value(self):
+        data = {
+            "title": "invalid source",
+            "total_duration": 1,
+            "shots": [{
+                "id": 1,
+                "start": 0,
+                "duration": 1,
+                "scene": "A scene",
+                "source": "stock",
+            }],
+        }
+        with self.assertRaises(ValidationError):
+            Storyboard.model_validate(data)
+
     def test_updated_storyboard_passes(self):
         path = Path("projects/chaidan_couple/storyboard.json")
         data = json.loads(path.read_text(encoding="utf-8"))
