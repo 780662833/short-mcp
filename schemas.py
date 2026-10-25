@@ -126,6 +126,8 @@ class GenJob(BaseModel):
     model_config = ConfigDict(extra="forbid")
     job_id: str
     shot_id: int
+    attempt: int = Field(ge=1)
+    expected_clip_path: str
     prompt: str
     negative_prompt: str
     ref_images: list[str] = Field(default_factory=list)
