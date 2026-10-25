@@ -4,76 +4,213 @@
   "bgm": "前2秒高级钢琴，2到10.5秒紧张拆弹鼓点，10.5秒起魔性土味神曲",
   "shots": [
     {
-      "id": 1, "start": 0, "duration": 2, "dialogue": "", "subtitle": "外人眼中的神仙眷侣",
-      "sfx": "高级钢琴，脚步声，门咔哒关闭", "clip": "", "seed": 20261,
-      "characters": [{"char_id": "male_lead", "look": "glam"}, {"char_id": "female_lead", "look": "glam"}],
-      "shot_type": "中景慢动作", "composition": "情侣并肩走向家门，双人同框，门位于画面后方",
+      "id": 1,
+      "start": 0,
+      "duration": 2,
+      "dialogue": "",
+      "subtitle": "外人眼中的神仙眷侣",
+      "sfx": "高级钢琴，脚步声，门咔哒关闭",
+      "clip": "",
+      "seed": 20261,
+      "characters": [
+        {
+          "char_id": "male_lead",
+          "look": "glam"
+        },
+        {
+          "char_id": "female_lead",
+          "look": "glam"
+        }
+      ],
+      "shot_type": "中景慢动作",
+      "composition": "情侣并肩走向家门，双人同框，门位于画面后方",
       "action": "两人外表精致、步伐从容，走进家门，门在身后关闭",
-      "lighting": "高级柔和逆光，暖色电影光", "camera_move": "平稳缓慢推进"
+      "lighting": "高级柔和逆光，暖色电影光",
+      "camera_move": "平稳缓慢推进"
     },
     {
-      "id": 2, "start": 2, "duration": 1.5, "dialogue": "", "subtitle": "门一关，开始拆弹",
-      "sfx": "门锁咔哒，紧张鼓点起", "clip": "", "seed": 20262,
-      "characters": [{"char_id": "male_lead", "look": "glam"}, {"char_id": "female_lead", "look": "glam"}],
-      "shot_type": "双人中景", "composition": "浴室镜前两人并肩，镜中和实景人物对应",
+      "id": 2,
+      "start": 2,
+      "duration": 1.5,
+      "dialogue": "",
+      "subtitle": "门一关，开始拆弹",
+      "sfx": "门锁咔哒，紧张鼓点起",
+      "clip": "",
+      "seed": 20262,
+      "characters": [
+        {
+          "char_id": "male_lead",
+          "look": "glam"
+        },
+        {
+          "char_id": "female_lead",
+          "look": "glam"
+        }
+      ],
+      "shot_type": "双人中景",
+      "composition": "浴室镜前两人并肩，镜中和实景人物对应",
       "action": "门关上后两人同时垮肩，交换严肃眼神，像开始拆弹任务",
-      "lighting": "室内中性光，轻微戏剧阴影", "camera_move": "快速轻推后定住"
+      "lighting": "室内中性光，轻微戏剧阴影",
+      "camera_move": "快速轻推后定住"
     },
     {
-      "id": 3, "start": 3.5, "duration": 1.5, "dialogue": "", "subtitle": "目标一：假睫毛",
-      "sfx": "轻微撕拉声，短促提示音", "clip": "", "seed": 20263,
-      "characters": [{"char_id": "female_lead", "look": "glam"}],
-      "shot_type": "面部特写", "composition": "女性面部居中，双手和假睫毛清晰可见",
+      "id": 3,
+      "start": 3.5,
+      "duration": 1.5,
+      "dialogue": "",
+      "subtitle": "目标一：假睫毛",
+      "sfx": "轻微撕拉声，短促提示音",
+      "clip": "",
+      "seed": 20263,
+      "characters": [
+        {
+          "char_id": "female_lead",
+          "look": "glam"
+        }
+      ],
+      "shot_type": "面部特写",
+      "composition": "女性面部居中，双手和假睫毛清晰可见",
       "action": "女性小心揭下假睫毛，动作像拆除精密装置，表情高度专注",
-      "lighting": "柔和正面补光，皮肤纹理自然", "camera_move": "固定镜头"
+      "lighting": "柔和正面补光，皮肤纹理自然",
+      "camera_move": "固定镜头"
     },
     {
-      "id": 4, "start": 5, "duration": 1.5, "dialogue": "", "subtitle": "目标二：拆束腰",
-      "sfx": "布料弹开声，低沉喜剧重音", "clip": "", "seed": 20264,
-      "characters": [{"char_id": "male_lead", "look": "glam"}],
-      "shot_type": "腰部近景", "composition": "腰部与双手在画面中心，保持穿着得体，不暴露身体",
+      "id": 4,
+      "start": 5,
+      "duration": 1.5,
+      "dialogue": "",
+      "subtitle": "目标二：拆束腰",
+      "sfx": "布料弹开声，低沉喜剧重音",
+      "clip": "",
+      "seed": 20264,
+      "characters": [
+        {
+          "char_id": "male_lead",
+          "look": "half"
+        }
+      ],
+      "shot_type": "腰部近景",
+      "composition": "腰部与双手在画面中心，保持穿着得体，不暴露身体",
       "action": "男性在西装内悄悄松开束腰，腹部自然放松，表情仍故作镇定",
-      "lighting": "室内柔光，衣料细节清楚", "camera_move": "轻微下摇至腰部"
+      "lighting": "室内柔光，衣料细节清楚",
+      "camera_move": "轻微下摇至腰部"
     },
     {
-      "id": 5, "start": 6.5, "duration": 1.5, "dialogue": "", "subtitle": "红线还是蓝线？",
-      "sfx": "头发摩擦声，紧张滴滴声", "clip": "", "seed": 20265,
-      "characters": [{"char_id": "male_lead", "look": "glam"}, {"char_id": "female_lead", "look": "glam"}],
-      "shot_type": "双人近景", "composition": "男性头部和女性双手清晰入镜",
+      "id": 5,
+      "start": 6.5,
+      "duration": 1.5,
+      "dialogue": "",
+      "subtitle": "红线还是蓝线？",
+      "sfx": "头发摩擦声，紧张滴滴声",
+      "clip": "",
+      "seed": 20265,
+      "characters": [
+        {
+          "char_id": "male_lead",
+          "look": "half"
+        },
+        {
+          "char_id": "female_lead",
+          "look": "glam"
+        }
+      ],
+      "shot_type": "双人近景",
+      "composition": "男性头部和女性双手清晰入镜",
       "action": "女性伸手把男性精心定型的头发揉乱，男性严肃盯着镜子，制造拆线般的紧张感",
-      "lighting": "镜前柔光，发丝细节清楚", "camera_move": "快速短促推近"
+      "lighting": "镜前柔光，发丝细节清楚",
+      "camera_move": "快速短促推近"
     },
     {
-      "id": 6, "start": 8, "duration": 1.5, "dialogue": "", "subtitle": "素颜已解锁",
-      "sfx": "卸妆棉擦拭声，喜剧提示音", "clip": "", "seed": 20266,
-      "characters": [{"char_id": "female_lead", "look": "real"}],
-      "shot_type": "面部特写", "composition": "女性脸部占画面主体，卸妆动作可见",
+      "id": 6,
+      "start": 8,
+      "duration": 1.5,
+      "dialogue": "",
+      "subtitle": "素颜已解锁",
+      "sfx": "卸妆棉擦拭声，喜剧提示音",
+      "clip": "",
+      "seed": 20266,
+      "characters": [
+        {
+          "char_id": "female_lead",
+          "look": "real"
+        }
+      ],
+      "shot_type": "面部特写",
+      "composition": "女性脸部占画面主体，卸妆动作可见",
       "action": "女性擦掉妆容后露出自然素颜，表情平静而真实，不夸张丑化",
-      "lighting": "自然室内光，保留真实皮肤纹理", "camera_move": "擦拭动作结束时轻微拉近"
+      "lighting": "自然室内光，保留真实皮肤纹理",
+      "camera_move": "擦拭动作结束时轻微拉近"
     },
     {
-      "id": 7, "start": 9.5, "duration": 1, "dialogue": "", "subtitle": "增高垫：已拆除",
-      "sfx": "鞋垫抽出声，短促嗖声", "clip": "", "seed": 20267,
-      "characters": [{"char_id": "male_lead", "look": "real"}],
-      "shot_type": "全身快切", "composition": "男性全身和手中鞋垫同框，地面清楚可见",
+      "id": 7,
+      "start": 9.5,
+      "duration": 1,
+      "dialogue": "",
+      "subtitle": "增高垫：已拆除",
+      "sfx": "鞋垫抽出声，短促嗖声",
+      "clip": "",
+      "seed": 20267,
+      "characters": [
+        {
+          "char_id": "male_lead",
+          "look": "half"
+        }
+      ],
+      "shot_type": "全身快切",
+      "composition": "男性全身和手中鞋垫同框，地面清楚可见",
       "action": "男性抽出鞋内增高垫，站姿高度自然降低，表现出小小尴尬",
-      "lighting": "自然室内光", "camera_move": "快速下摇到鞋垫后回到人物"
+      "lighting": "自然室内光",
+      "camera_move": "快速下摇到鞋垫后回到人物"
     },
     {
-      "id": 8, "start": 10.5, "duration": 2, "dialogue": "", "subtitle": "拆弹成功：原形毕露",
-      "sfx": "紧张鼓点停止，魔性土味神曲起，薯片咀嚼声", "clip": "", "seed": 20268,
-      "characters": [{"char_id": "male_lead", "look": "real"}, {"char_id": "female_lead", "look": "real"}],
-      "shot_type": "沙发全景", "composition": "两人并排瘫在沙发上，薯片和泡面作为可见道具",
+      "id": 8,
+      "start": 10.5,
+      "duration": 2,
+      "dialogue": "",
+      "subtitle": "拆弹成功：原形毕露",
+      "sfx": "紧张鼓点停止，魔性土味神曲起，薯片咀嚼声",
+      "clip": "",
+      "seed": 20268,
+      "characters": [
+        {
+          "char_id": "male_lead",
+          "look": "real"
+        },
+        {
+          "char_id": "female_lead",
+          "look": "real"
+        }
+      ],
+      "shot_type": "沙发全景",
+      "composition": "两人并排瘫在沙发上，薯片和泡面作为可见道具",
       "action": "男性穿旧背心大裤衩、肚子上放薯片；女性穿恐龙睡衣抱泡面，两人松弛地刷手机",
-      "lighting": "温暖居家灯光，生活化质感", "camera_move": "轻微手持感，最后稳定"
+      "lighting": "温暖居家灯光，生活化质感",
+      "camera_move": "轻微手持感，最后稳定"
     },
     {
-      "id": 9, "start": 12.5, "duration": 2.5, "dialogue": "", "subtitle": "体面只维持到关门前",
-      "sfx": "门外敲门声，音乐急停", "clip": "", "seed": 20269,
-      "characters": [{"char_id": "male_lead", "look": "real"}, {"char_id": "female_lead", "look": "real"}],
-      "shot_type": "双人中近景", "composition": "两人同框并同时看向门口，外套位于画面边缘",
+      "id": 9,
+      "start": 12.5,
+      "duration": 2.5,
+      "dialogue": "",
+      "subtitle": "体面只维持到关门前",
+      "sfx": "门外敲门声，音乐急停",
+      "clip": "",
+      "seed": 20269,
+      "characters": [
+        {
+          "char_id": "male_lead",
+          "look": "real"
+        },
+        {
+          "char_id": "female_lead",
+          "look": "real"
+        }
+      ],
+      "shot_type": "双人中近景",
+      "composition": "两人同框并同时看向门口，外套位于画面边缘",
       "action": "敲门声响起，两人瞬间僵住并对视，男性伸手抓西装外套，女性准备恢复精致造型，反转停在慌乱瞬间",
-      "lighting": "居家暖光，人物表情清楚", "camera_move": "敲门瞬间快速推近并定格"
+      "lighting": "居家暖光，人物表情清楚",
+      "camera_move": "敲门瞬间快速推近并定格"
     }
   ]
 }
