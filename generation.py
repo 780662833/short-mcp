@@ -239,10 +239,9 @@ def audit_reference_images(project: str | Path = DEFAULT_PROJECT) -> dict:
     for row in references:
         for issue in row["errors"]:
             errors.append(f"参考图 {row['path']}: {issue}")
-    missing_looks = [
-        item for item in look_coverage
-        if not item["covered"] and (item["used_by_shots"] or item["configured_refs"])
-    ]
+    # Audit every declared character/look, including currently unused looks, so the
+    # inventory can expose incomplete glam/half/real reference sets before later edits.
+    missing_looks = [item for item in look_coverage if not item["covered"]]
     for item in missing_looks:
         shots = ", ".join(map(str, item["used_by_shots"])) or "未被当前分镜使用"
         warnings.append(
