@@ -91,6 +91,185 @@ def validate_assets(project: str | Path = DEFAULT_PROJECT) -> dict:
     return {"ok": not errors, "structure_ok": not errors, "ready": not errors, "errors": errors, "readiness_errors": [], "warnings": warnings, "checked_refs": checked_refs}
 
 
+
+def _image_header_info(data: bytes) -> tuple[str | None, bool]:
+    """Identify common raster image signatures without claiming full pixel decoding."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        if len(data) < 24 or data[12:16] != b"IHDR":
+            return "png", False
+        width = int.from_bytes(data[16:20], "big")
+        height = int.from_bytes(data[20:24], "big")
+        return "png", width > 0 and height > 0
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpeg", len(data) >= 4
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp", len(data) >= 16
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "gif", len(data) >= 10
+    if data.startswith(b"BM"):
+        return "bmp", len(data) >= 26
+    if data.startswith((b"II*\x00", b"MM\x00*")):
+        return "tiff", len(data) >= 8
+    return None, False
+
+
+def audit_reference_images(project: str | Path = DEFAULT_PROJECT) -> dict:
+    """Read-only inventory of configured references, header checks, hashes, and look coverage."""
+    root = _project_path(project)
+    try:
+        storyboard, characters, _style, load_errors = _load_project(root)
+    except (OSError, json.JSONDecodeError, ValidationError, ValueError) as exc:
+        return {
+            "status": "invalid",
+            "project": root.name,
+            "structure_ok": False,
+            "ready": False,
+            "errors": [str(exc)],
+            "warnings": [],
+            "references": [],
+            "look_coverage": [],
+            "duplicate_content": [],
+            "human_review_required": True,
+        }
+    if load_errors:
+        return {
+            "status": "invalid",
+            "project": root.name,
+            "structure_ok": False,
+            "ready": False,
+            "errors": load_errors,
+            "warnings": [],
+            "references": [],
+            "look_coverage": [],
+            "duplicate_content": [],
+            "human_review_required": True,
+        }
+
+    used_by_look: dict[tuple[str, str], set[int]] = {}
+    errors: list[str] = []
+    warnings: list[str] = []
+    for shot in storyboard.shots:
+        for item in shot.characters:
+            char = characters.get(item.char_id)
+            if char is None:
+                errors.append(f"镜头{shot.id}: 未知角色 {item.char_id!r}")
+                continue
+            if item.look not in char.looks:
+                errors.append(f"镜头{shot.id}: 角色 {item.char_id!r} 未配置造型 {item.look!r}")
+                continue
+            used_by_look.setdefault((item.char_id, item.look), set()).add(shot.id)
+
+    references: list[dict] = []
+    path_rows: dict[str, dict] = {}
+    hash_paths: dict[str, list[str]] = {}
+    look_coverage: list[dict] = []
+    supported_extensions = {
+        ".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg",
+        ".webp": "webp", ".gif": "gif", ".bmp": "bmp", ".tif": "tiff", ".tiff": "tiff",
+    }
+
+    for char_id, char in sorted(characters.items()):
+        for look_name, look in sorted(char.looks.items()):
+            key = (char_id, look_name)
+            shot_ids = sorted(used_by_look.get(key, set()))
+            configured = list(dict.fromkeys(look.ref_images))
+            valid_paths: list[str] = []
+            for relative in configured:
+                row = path_rows.get(relative)
+                if row is None:
+                    row = {
+                        "path": relative,
+                        "exists": False,
+                        "valid_image_header": False,
+                        "format": None,
+                        "sha256": None,
+                        "size_bytes": None,
+                        "status": "missing",
+                        "used_by": [],
+                        "errors": [],
+                    }
+                    try:
+                        path = _safe_project_file(root, relative)
+                        if path.is_file():
+                            data = path.read_bytes()
+                            row["exists"] = True
+                            row["size_bytes"] = len(data)
+                            image_format, header_ok = _image_header_info(data)
+                            row["format"] = image_format
+                            row["valid_image_header"] = header_ok
+                            if not data:
+                                row["errors"].append("文件为空")
+                            elif image_format is None:
+                                row["errors"].append("文件头不是支持的常见图片格式")
+                            elif not header_ok:
+                                row["errors"].append("图片文件头不完整或尺寸无效")
+                            expected_format = supported_extensions.get(path.suffix.lower())
+                            if expected_format is None:
+                                row["errors"].append("文件扩展名不是支持的图片格式")
+                            elif image_format is not None and expected_format != image_format:
+                                row["errors"].append(
+                                    f"扩展名格式 {expected_format} 与文件头格式 {image_format} 不一致"
+                                )
+                            if not row["errors"]:
+                                row["sha256"] = hashlib.sha256(data).hexdigest()
+                                row["status"] = "valid"
+                                hash_paths.setdefault(row["sha256"], []).append(relative)
+                            else:
+                                row["status"] = "invalid"
+                        else:
+                            row["errors"].append("配置的参考图文件不存在")
+                    except (OSError, ValueError) as exc:
+                        row["status"] = "invalid"
+                        row["errors"].append(str(exc))
+                    path_rows[relative] = row
+                if key not in row["used_by"]:
+                    row["used_by"].append({"char_id": char_id, "look": look_name, "shot_ids": shot_ids})
+                if row["status"] == "valid":
+                    valid_paths.append(relative)
+            look_coverage.append({
+                "char_id": char_id,
+                "look": look_name,
+                "used_by_shots": shot_ids,
+                "configured_refs": configured,
+                "valid_refs": valid_paths,
+                "covered": bool(valid_paths) if shot_ids else bool(valid_paths),
+            })
+
+    references = list(path_rows.values())
+    for row in references:
+        for issue in row["errors"]:
+            errors.append(f"参考图 {row['path']}: {issue}")
+    # Audit every declared character/look, including currently unused looks, so the
+    # inventory can expose incomplete glam/half/real reference sets before later edits.
+    missing_looks = [item for item in look_coverage if not item["covered"]]
+    for item in missing_looks:
+        shots = ", ".join(map(str, item["used_by_shots"])) or "未被当前分镜使用"
+        warnings.append(
+            f"缺少有效参考图：{item['char_id']}/{item['look']}（镜头 {shots}）"
+        )
+    duplicates = [
+        {"sha256": digest, "paths": sorted(set(paths))}
+        for digest, paths in sorted(hash_paths.items())
+        if len(set(paths)) > 1
+    ]
+    ready = not errors and not missing_looks
+    status = "ready" if ready else ("invalid" if errors else "blocked")
+    return {
+        "status": status,
+        "project": root.name,
+        "structure_ok": True,
+        "ready": ready,
+        "errors": errors,
+        "warnings": warnings,
+        "references": sorted(references, key=lambda item: item["path"]),
+        "look_coverage": look_coverage,
+        "duplicate_content": duplicates,
+        "human_review_required": True,
+        "image_validation_scope": "header_signature_and_basic_dimensions_only_not_full_decode_or_semantic_review",
+        "generation_api_called": False,
+    }
+
+
 def validate_generation_readiness(project: str | Path = DEFAULT_PROJECT) -> dict:
     """Validate structure plus at least one existing reference image for each used character/look."""
     root = _project_path(project)

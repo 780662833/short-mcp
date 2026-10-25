@@ -4,6 +4,7 @@ from typing import Annotated
 from mcp.server.fastmcp import FastMCP
 
 from generation import attach_clip as attach_clip_impl
+from generation import audit_reference_images as audit_reference_images_impl
 from generation import prepare_generation_jobs as prepare_jobs_impl
 from generation import project_status as project_status_impl
 from generation import review_clip as review_clip_impl
@@ -38,6 +39,12 @@ def _safe_project_arg(project: str) -> str:
 def validate_assets(project: str = "projects/chaidan_couple") -> dict:
     """Read-only validation of storyboard, character/look references, and asset paths."""
     return validate_assets_impl(_safe_project_arg(project))
+
+
+@mcp.tool()
+def audit_reference_images(project: str = "projects/chaidan_couple") -> dict:
+    """Read-only reference image inventory, file-header validation, SHA-256, and character/look coverage."""
+    return audit_reference_images_impl(_safe_project_arg(project))
 
 
 @mcp.tool()
