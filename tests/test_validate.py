@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from generation import build_prompt, validate_assets
+from generation import build_prompt, prepare_generation_jobs, validate_assets
 from schemas import Character, GenJob, Look, Shot, Storyboard, Style, speech_need
 
 
@@ -61,6 +61,28 @@ class PromptTests(unittest.TestCase):
         report = validate_assets("projects/chaidan_couple")
         self.assertTrue(report["ok"], report["errors"])
         self.assertEqual(report["checked_refs"], [])
+
+
+
+class JobPreparationTests(unittest.TestCase):
+    def test_jobs_snapshot_stable_prompts_and_unique_attempts(self):
+        source = Path("projects/chaidan_couple")
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(source, project)
+            first = prepare_generation_jobs(project, shot_ids=[1])
+            first_job_path = project / first["created"][0]["path"]
+            first_job = json.loads(first_job_path.read_text(encoding="utf-8"))
+            second = prepare_generation_jobs(project, shot_ids=[1])
+            second_job_path = project / second["created"][0]["path"]
+            second_job = json.loads(second_job_path.read_text(encoding="utf-8"))
+            self.assertFalse(first["generation_api_called"])
+            self.assertNotEqual(first_job["job_id"], second_job["job_id"])
+            self.assertEqual(first_job["prompt"], second_job["prompt"])
+            self.assertEqual(first_job["negative_prompt"], second_job["negative_prompt"])
+            self.assertEqual(first_job["seed"], 20261)
+            self.assertEqual(first_job["ref_images"], [])
+            self.assertEqual(first_job["ref_hashes"], [])
 
 
 if __name__ == "__main__":
