@@ -1,19 +1,30 @@
 # chaidan_couple storyboard
 
-将已确认的《拆弹夫妻》分镜 JSON 保存为本目录下的 `storyboard.json`。
+将已确认的《拆弹夫妻》分镜 JSON 保存为本目录下的 `storyboard.json`。当前 schema 面向 **分镜 → AI 素材生成**：`scene` 描述镜头内容，`prompt` 保存可直接提交给生成模型的提示词，`ref_image` 和 `seed` 为一致性与复现提供输入。
 
 ## 执行校验
 
 ```powershell
 python -m pip install -r requirements.txt
 python validate.py projects/chaidan_couple/storyboard.json
-```
-
-运行校验器单元测试：
-
-```powershell
 python -m unittest discover -s tests -v
 ```
+
+## Shot 字段
+
+| 字段 | 含义 |
+|---|---|
+| `id` | 镜头编号，从 1 开始连续递增 |
+| `start` / `duration` | 镜头开始时间与持续秒数 |
+| `scene` | 自然语言画面、动作、场景描述；可作为提示词生成的语义来源 |
+| `dialogue` / `subtitle` / `sfx` | 对白、字幕和音效说明 |
+| `clip` | 生成或拍摄完成后的素材文件路径 |
+| `source` | 素材来源：`ai` 或 `shoot`，默认 `ai` |
+| `prompt` | 传给视频/图像生成模型的镜头提示词；尚未生成时可留空 |
+| `ref_image` | 角色参考图路径；尚未指定时可留空 |
+| `seed` | 可选整数种子；未指定时为 `null` |
+
+`source` 只允许 `ai` 或 `shoot`。当前 9 个镜头默认使用 `ai`，`prompt`、`ref_image` 暂留空，`seed` 暂为 `null`，不虚构尚未创建的提示词或参考图文件。
 
 ## 校验规则
 
@@ -36,8 +47,8 @@ python validate.py projects/chaidan_couple/storyboard.json
 - `SHORT_MCP_CHARS_PER_SEC`：每秒估算可说的有效字符数，必须大于 0；
 - `SHORT_MCP_TURN_GAP`：每次换人说话额外预留的秒数，必须大于或等于 0。
 
-对白时长只是**生成前的估算门禁**，不等于实际录音、配音或表演时长。语气、停顿、重叠对白及情绪表演仍需通过配音/实拍或音频时长复核。
+对白时长只是生成前的估算，不等于实际配音时长。当前阶段只定义分镜数据契约与静态校验，不包含 Agent 自动重生成、自动错误回传或素材生成 API 调用。
 
-## 失败后的处理
+## 提示词准备建议
 
-把完整报错反馈给生成分镜的 Agent，并要求它按 `PROMPT_RULES.md` 重新生成；不要为了通过校验而手工改写剧情 JSON。仅当用户明确提供新版剧本时，才用该版本更新 `storyboard.json`。
+把 `scene` 转为 `prompt` 时，保留人物身份、动作先后、景别、构图、环境、光线、风格与镜头运动；通过 `ref_image` 指向同一角色参考图，并按目标模型需要选择固定 `seed`。提示词应明确描述本镜头可见内容，不应凭空改变剧本中的关键动作或反转。
