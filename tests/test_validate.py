@@ -7,7 +7,8 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from generation import attach_clip, build_prompt, prepare_generation_jobs, review_clip, validate_assets, validate_generation_readiness
+from generation import _safe_project_file, attach_clip, build_prompt, prepare_generation_jobs, review_clip, validate_assets, validate_generation_readiness
+from mcp_server import _safe_project_arg
 from schemas import Character, GenJob, Look, Shot, Storyboard, Style, speech_need
 
 
@@ -24,8 +25,12 @@ class SchemaTests(unittest.TestCase):
             Look.model_validate({"description": "look", "ref_images": [], "unexpected": True})
 
     def test_character_and_style_models(self):
-        Character.model_validate({"char_id": "lead", "identity": "identity", "looks": {"glam": {"description": "look", "ref_images": []}}})
-        Style.model_validate({"base": "base", "negative": "negative"})
+        Character.model_validate({"char_id": "lead", "identity": "identity", "looks": {
+            "glam": {"description": "glam", "ref_images": []},
+            "half": {"description": "half", "ref_images": []},
+            "real": {"description": "real", "ref_images": []},
+        }})
+        Style.model_validate({"base_glam": "glam base", "base_real": "real base", "negative": "negative"})
 
     def test_speech_timing(self):
         self.assertEqual(speech_need(""), 0.0)
@@ -41,28 +46,63 @@ class SchemaTests(unittest.TestCase):
 class PromptTests(unittest.TestCase):
     def test_prompt_order_and_repeatability(self):
         shot = Shot(id=1, start=0, duration=1, shot_type="近景", composition="居中", action="转头", lighting="柔光", camera_move="推进", characters=[{"char_id": "lead", "look": "glam"}])
-        chars = {"lead": Character(char_id="lead", identity="固定身份", looks={"glam": Look(description="西装", ref_images=[])})}
-        style = Style(base="竖屏写实", negative="不要水印")
+        chars = {"lead": Character(char_id="lead", identity="固定身份", looks={
+            "glam": Look(description="西装", ref_images=[]),
+            "half": Look(description="过渡造型", ref_images=[]),
+            "real": Look(description="居家服", ref_images=[]),
+        })}
+        style = Style(base_glam="竖屏写实", base_real="居家写实", negative="不要水印")
         first = build_prompt(shot, chars, style)
         second = build_prompt(shot, chars, style)
         self.assertEqual(first, second)
         self.assertEqual(first[0], "竖屏写实，近景，居中，固定身份，西装，转头，柔光，推进")
         self.assertEqual(first[1], "不要水印")
+        real_shot = Shot(id=1, start=0, duration=1, characters=[{"char_id": "lead", "look": "real"}])
+        real_prompt = build_prompt(real_shot, chars, style)
+        self.assertTrue(real_prompt[0].startswith("居家写实，"))
+        self.assertEqual(real_prompt[1], "不要水印")
 
     def test_asset_validation_collects_missing_reference(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "storyboard.json").write_text(json.dumps({"title":"x","total_duration":1,"shots":[{"id":1,"start":0,"duration":1,"characters":[{"char_id":"lead","look":"glam"}]}]}), encoding="utf-8")
             (root / "characters.json").write_text(json.dumps({"lead":{"char_id":"lead","identity":"x","looks":{"glam":{"description":"x","ref_images":["refs/missing.png"]}}}}), encoding="utf-8")
-            (root / "style.json").write_text(json.dumps({"base":"x","negative":"x"}), encoding="utf-8")
+            (root / "style.json").write_text(json.dumps({"base_glam":"x","base_real":"x","negative":"x"}), encoding="utf-8")
             report = validate_assets(root)
-            self.assertFalse(report["ok"])
-            self.assertTrue(any("参考图不存在" in e for e in report["errors"]))
+            self.assertTrue(report["structure_ok"], report["errors"])
+            self.assertTrue(any("参考图文件不存在" in warning for warning in report["warnings"]))
+            readiness = validate_generation_readiness(root)
+            self.assertFalse(readiness["ready"])
+            self.assertTrue(any("lead/glam" in issue for issue in readiness["readiness_errors"]))
 
     def test_project_assets_validate(self):
         report = validate_assets("projects/chaidan_couple")
         self.assertTrue(report["ok"], report["errors"])
         self.assertEqual(report["checked_refs"], [])
+
+    def test_mcp_project_path_rejects_traversal(self):
+        with self.assertRaisesRegex(ValueError, "不允许包含"):
+            _safe_project_arg("../../etc")
+        with self.assertRaisesRegex(ValueError, "不允许包含"):
+            _safe_project_arg("projects/../etc")
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, "不能包含"):
+                _safe_project_file(Path(tmp), "clips/../storyboard.json")
+
+    def test_storyboard_transition_shots_use_half_look(self):
+        path = Path("projects/chaidan_couple/storyboard.json")
+        storyboard = Storyboard.model_validate_json(path.read_text(encoding="utf-8"))
+        for shot_id in (4, 5, 7):
+            shot = next(shot for shot in storyboard.shots if shot.id == shot_id)
+            male = next(item for item in shot.characters if item.char_id == "male_lead")
+            self.assertEqual(male.look, "half")
+
+    def test_english_subtitle_limit_is_40_characters(self):
+        base = {"title":"x","total_duration":1,"shots":[{"id":1,"start":0,"duration":1,"subtitle":"A"*40}]}
+        Storyboard.model_validate(base)
+        base["shots"][0]["subtitle"] = "A"*41
+        with self.assertRaises(ValidationError):
+            Storyboard.model_validate(base)
 
 
 
@@ -75,6 +115,8 @@ class JobPreparationTests(unittest.TestCase):
             ("female_glam.png", b"female-glam-v1"),
             ("male_real.png", b"male-real-v1"),
             ("female_real.png", b"female-real-v1"),
+            ("male_half.png", b"male-half-v1"),
+            ("female_half.png", b"female-half-v1"),
         ):
             (refs / name).write_bytes(data)
         chars_path = project / "characters.json"
@@ -83,6 +125,8 @@ class JobPreparationTests(unittest.TestCase):
         chars["female_lead"]["looks"]["glam"]["ref_images"] = ["refs/female_glam.png"]
         chars["male_lead"]["looks"]["real"]["ref_images"] = ["refs/male_real.png"]
         chars["female_lead"]["looks"]["real"]["ref_images"] = ["refs/female_real.png"]
+        chars["male_lead"]["looks"]["half"]["ref_images"] = ["refs/male_half.png"]
+        chars["female_lead"]["looks"]["half"]["ref_images"] = ["refs/female_half.png"]
         chars_path.write_text(json.dumps(chars, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def test_missing_reference_blocks_jobs_without_prepared_manifests(self):
@@ -93,8 +137,10 @@ class JobPreparationTests(unittest.TestCase):
             report = validate_generation_readiness(project)
             self.assertFalse(report["ready"])
             self.assertTrue(any("male_lead/glam" in e for e in report["readiness_errors"]))
-            with self.assertRaisesRegex(ValueError, "生成就绪校验失败"):
-                prepare_generation_jobs(project, shot_ids=[1])
+            blocked = prepare_generation_jobs(project, shot_ids=[1])
+            self.assertEqual(blocked["status"], "blocked")
+            self.assertEqual(blocked["created"], [])
+            self.assertTrue(any("male_lead/glam" in item["reason"] for item in blocked["blocked"]))
             jobs_dir = project / "jobs"
             self.assertFalse(jobs_dir.exists() and list(jobs_dir.glob("*.json")))
             storyboard = json.loads((project / "storyboard.json").read_text(encoding="utf-8"))
