@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from generation import _safe_project_file, attach_clip, build_prompt, prepare_generation_jobs, project_status, review_clip, validate_assets, validate_clip, validate_generation_readiness
+from generation import audit_reference_images, _safe_project_file, attach_clip, build_prompt, prepare_generation_jobs, project_status, review_clip, validate_assets, validate_clip, validate_generation_readiness
 from mcp_server import _safe_project_arg
 from schemas import Character, GenJob, Look, Shot, Storyboard, Style, speech_need
 
@@ -74,6 +74,42 @@ class PromptTests(unittest.TestCase):
             readiness = validate_generation_readiness(root)
             self.assertFalse(readiness["ready"])
             self.assertTrue(any("lead/glam" in issue for issue in readiness["readiness_errors"]))
+
+    def test_reference_audit_reports_missing_looks_and_keeps_generation_disabled(self):
+        source = Path("projects/chaidan_couple")
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(source, project)
+            report = audit_reference_images(project)
+            self.assertEqual(report["status"], "blocked")
+            self.assertFalse(report["ready"])
+            self.assertFalse(report["generation_api_called"])
+            self.assertTrue(report["human_review_required"])
+            self.assertTrue(any(row["char_id"] == "male_lead" and row["look"] == "glam" and not row["covered"] for row in report["look_coverage"]))
+            self.assertTrue(any("male_lead/glam" in warning for warning in report["warnings"]))
+
+    def test_reference_audit_hashes_valid_png_header_and_detects_invalid_image(self):
+        source = Path("projects/chaidan_couple")
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(source, project)
+            refs = project / "refs"
+            refs.mkdir()
+            png_header = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + (2).to_bytes(4, "big") + (3).to_bytes(4, "big") + b"\x08\x06\x00\x00\x00"
+            (refs / "male_glam.png").write_bytes(png_header)
+            (refs / "female_glam.png").write_bytes(b"not really an image")
+            chars_path = project / "characters.json"
+            chars = json.loads(chars_path.read_text(encoding="utf-8"))
+            chars["male_lead"]["looks"]["glam"]["ref_images"] = ["refs/male_glam.png"]
+            chars["female_lead"]["looks"]["glam"]["ref_images"] = ["refs/female_glam.png"]
+            chars_path.write_text(json.dumps(chars, ensure_ascii=False, indent=2), encoding="utf-8")
+            report = audit_reference_images(project)
+            by_path = {row["path"]: row for row in report["references"]}
+            self.assertEqual(by_path["refs/male_glam.png"]["status"], "valid")
+            self.assertEqual(len(by_path["refs/male_glam.png"]["sha256"]), 64)
+            self.assertEqual(by_path["refs/female_glam.png"]["status"], "invalid")
+            self.assertEqual(report["status"], "invalid")
+            self.assertFalse(report["ready"])
 
     def test_project_assets_validate(self):
         report = validate_assets("projects/chaidan_couple")
