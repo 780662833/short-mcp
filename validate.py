@@ -1,8 +1,25 @@
 import json
+import re
 import sys
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
+
+ROLE = r"(男&女|男|女)[：:]"
+CHARS_PER_SEC = 5.0
+TURN_GAP = 0.3
+TIMELINE_TOLERANCE = 0.01
+
+
+def speech_need(dialogue: str) -> float:
+    """Estimate minimum spoken time for fast-paced Chinese comedy dialogue."""
+    if not dialogue:
+        return 0.0
+    turns = len(re.findall(ROLE, dialogue))
+    text = re.sub(ROLE, "", dialogue)
+    chars = len(re.sub(r"[^\u4e00-\u9fffA-Za-z0-9]", "", text))
+    return chars / CHARS_PER_SEC + TURN_GAP * max(turns - 1, 0)
 
 
 class Shot(BaseModel):
@@ -34,13 +51,13 @@ class Storyboard(BaseModel):
                 raise ValueError(
                     f"镜头编号应连续从1开始：第{expected_id}个位置实际是镜头{shot.id}"
                 )
-            if abs(shot.start - t) > 0.01:
+            if abs(shot.start - t) > TIMELINE_TOLERANCE:
                 raise ValueError(
                     f"镜头{shot.id}: start应为{t:.3f}，实际{shot.start}"
                 )
             t += shot.duration
 
-        if abs(t - self.total_duration) > 0.01:
+        if abs(t - self.total_duration) > TIMELINE_TOLERANCE:
             raise ValueError(
                 f"时长之和{t:.3f} ≠ total_duration {self.total_duration}"
             )
@@ -50,6 +67,19 @@ class Storyboard(BaseModel):
                 raise ValueError(
                     f"镜头{shot.id}: 字幕超过12字（当前{len(shot.subtitle)}字）"
                 )
+
+        speech_errors = []
+        for shot in self.shots:
+            need = speech_need(shot.dialogue)
+            if need > shot.duration + TIMELINE_TOLERANCE:
+                speech_errors.append(
+                    f"镜头{shot.id}: 台词约需{need:.1f}秒，"
+                    f"镜头仅{shot.duration:g}秒（超出约{need - shot.duration:.1f}秒）；"
+                    "请删减台词、拆分或延长镜头"
+                )
+        if speech_errors:
+            raise ValueError("台词时长估算未通过：\n- " + "\n- ".join(speech_errors))
+
         return self
 
 
