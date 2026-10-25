@@ -94,16 +94,17 @@ def validate_generation_readiness(project: str | Path = DEFAULT_PROJECT) -> dict
     if errors:
         return {**structural, "ready": False, "readiness_errors": []}
     storyboard, characters, _style, _load_errors = _load_project(root)
-    missing_refs: set[tuple[str, str]] = set()
+    missing_refs: dict[tuple[str, str], set[int]] = {}
     for shot in storyboard.shots:
         for item in shot.characters:
             char = characters[item.char_id]
             look = char.looks[item.look]
+            # An empty list is structurally valid but not generation-ready.
             if not look.ref_images:
-                missing_refs.add((item.char_id, item.look))
+                missing_refs.setdefault((item.char_id, item.look), set()).add(shot.id)
     readiness_errors = [
-        f"缺少 {char_id}/{look} 参考图：该出场角色造型至少需要 1 张存在的参考图"
-        for char_id, look in sorted(missing_refs)
+        f"缺少 {char_id}/{look} 参考图（镜头 {', '.join(map(str, sorted(shot_ids)))})"
+        for (char_id, look), shot_ids in sorted(missing_refs.items())
     ]
     return {
         **structural,
@@ -114,7 +115,11 @@ def validate_generation_readiness(project: str | Path = DEFAULT_PROJECT) -> dict
 
 
 def build_prompt(shot: Shot, chars: dict[str, Character], style: Style) -> tuple[str, str, list[str]]:
-    parts = [style.base, "，".join(p for p in (shot.shot_type, shot.composition) if p)]
+    # Transition ("half") shots retain the glam visual language; fully-real shots
+    # switch to base_real. The rule is deterministic for mixed-character shots.
+    looks = [item.look for item in shot.characters]
+    base_style = style.base_real if looks and all(look == "real" for look in looks) else style.base_glam
+    parts = [base_style, "，".join(p for p in (shot.shot_type, shot.composition) if p)]
     refs: list[str] = []
     for item in shot.characters:
         char = chars[item.char_id]
@@ -139,8 +144,24 @@ def prepare_generation_jobs(
     """Build deterministic prompts and unique per-attempt manifests; never calls a model."""
     root = _project_path(project)
     validation = validate_generation_readiness(root)
+    if not validation["structure_ok"]:
+        return {
+            "status": "invalid",
+            "created": [],
+            "count": 0,
+            "errors": validation["errors"],
+            "blocked": [],
+            "generation_api_called": False,
+        }
     if not validation["ready"]:
-        raise ValueError("生成就绪校验失败：" + "；".join(validation["errors"]))
+        return {
+            "status": "blocked",
+            "created": [],
+            "count": 0,
+            "errors": [],
+            "blocked": [{"reason": issue} for issue in validation["readiness_errors"]],
+            "generation_api_called": False,
+        }
     storyboard, chars, style, _ = _load_project(root)
     wanted = set(shot_ids) if shot_ids is not None else {s.id for s in storyboard.shots}
     found = {s.id for s in storyboard.shots}
@@ -196,7 +217,7 @@ def prepare_generation_jobs(
         json.dumps(storyboard.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    return {"created": created, "count": len(created), "generation_api_called": False}
+    return {"status": "prepared", "created": created, "count": len(created), "blocked": [], "generation_api_called": False}
 
 
 def _probe_duration(path: Path) -> float:
