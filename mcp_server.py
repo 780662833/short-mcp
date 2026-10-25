@@ -5,6 +5,7 @@ from mcp.server.fastmcp import FastMCP
 
 from generation import attach_clip as attach_clip_impl
 from generation import prepare_generation_jobs as prepare_jobs_impl
+from generation import project_status as project_status_impl
 from generation import review_clip as review_clip_impl
 from generation import validate_assets as validate_assets_impl
 from generation import validate_generation_readiness as validate_readiness_impl
@@ -42,6 +43,12 @@ def validate_assets(project: str = "projects/chaidan_couple") -> dict:
 def validate_generation_readiness(project: str = "projects/chaidan_couple") -> dict:
     """Validate that every character/look used by the storyboard has at least one existing reference image."""
     return validate_readiness_impl(_safe_project_arg(project))
+
+
+@mcp.tool()
+def project_status(project: str = "projects/chaidan_couple") -> dict:
+    """Read-only snapshot of project readiness, per-shot generation status, attempts, and blockers."""
+    return project_status_impl(_safe_project_arg(project))
 
 
 @mcp.tool()
