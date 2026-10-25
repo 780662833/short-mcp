@@ -5,6 +5,7 @@ from mcp.server.fastmcp import FastMCP
 
 from generation import attach_clip as attach_clip_impl
 from generation import audit_reference_images as audit_reference_images_impl
+from generation import build_reference_pack_plan as build_reference_pack_plan_impl
 from generation import prepare_generation_jobs as prepare_jobs_impl
 from generation import project_status as project_status_impl
 from generation import review_clip as review_clip_impl
@@ -45,6 +46,12 @@ def validate_assets(project: str = "projects/chaidan_couple") -> dict:
 def audit_reference_images(project: str = "projects/chaidan_couple") -> dict:
     """Read-only reference image inventory, file-header validation, SHA-256, and character/look coverage."""
     return audit_reference_images_impl(_safe_project_arg(project))
+
+
+@mcp.tool()
+def build_reference_pack_plan(project: str = "projects/chaidan_couple") -> dict:
+    """Build a read-only checklist and per-look reference brief; does not create images or call generation APIs."""
+    return build_reference_pack_plan_impl(_safe_project_arg(project))
 
 
 @mcp.tool()
