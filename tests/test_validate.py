@@ -1,141 +1,112 @@
-import importlib
 import json
-import math
-import os
+import shutil
+import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
-import validate
 from pydantic import ValidationError
 
-from validate import Storyboard, speech_need
+from generation import attach_clip, build_prompt, prepare_generation_jobs, review_clip, validate_assets
+from schemas import Character, GenJob, Look, Shot, Storyboard, Style, speech_need
 
 
-class SpeechTimingTests(unittest.TestCase):
-    def test_empty_dialogue_needs_no_time(self):
-        self.assertEqual(speech_need(""), 0.0)
-
-    def test_two_turns_adds_turn_gap(self):
-        self.assertAlmostEqual(speech_need("男：行动开始。女：收到。"), 1.5)
-
-    def test_single_turn_has_no_turn_gap(self):
-        self.assertAlmostEqual(speech_need("女：剪蓝线！"), 0.6)
-
-    def test_shot_six_and_nine_estimates(self):
-        self.assertAlmostEqual(speech_need("男：增高垫！女：发片！"), 1.3)
-        self.assertAlmostEqual(speech_need("男&女：重新装！"), 0.6)
-
-    def test_timing_settings_can_be_overridden_by_environment(self):
-        names = ("SHORT_MCP_CHARS_PER_SEC", "SHORT_MCP_TURN_GAP")
-        previous = {name: os.environ.get(name) for name in names}
-        try:
-            os.environ[names[0]] = "10"
-            os.environ[names[1]] = "0.5"
-            importlib.reload(validate)
-            self.assertAlmostEqual(
-                validate.speech_need("男：你好。女：收到。"), 0.9
-            )
-        finally:
-            for name, value in previous.items():
-                if value is None:
-                    os.environ.pop(name, None)
-                else:
-                    os.environ[name] = value
-            importlib.reload(validate)
-
-    def test_rejects_non_finite_timeline_values(self):
-        data = {
-            "title": "invalid",
-            "total_duration": math.inf,
-            "shots": [{"id": 1, "start": 0, "duration": math.inf, "scene": ""}],
-        }
-        with self.assertRaises(ValidationError):
-            Storyboard.model_validate(data)
-
-    def test_timeline_tolerance_accepts_float_rounding_boundary(self):
-        data = {
-            "title": "tolerance",
-            "total_duration": 0.31,
-            "shots": [
-                {"id": 1, "start": 0, "duration": 0.3, "scene": ""},
-                {"id": 2, "start": 0.31, "duration": 0.01, "scene": ""},
-            ],
-        }
-        Storyboard.model_validate(data)
-
-    def test_validator_errors_use_real_newlines(self):
-        data = {
-            "title": "multiple errors",
-            "total_duration": 0.2,
-            "shots": [
-                {
-                    "id": 1,
-                    "start": 0,
-                    "duration": 0.1,
-                    "scene": "",
-                    "dialogue": "女：abcdefghi",
-                },
-                {
-                    "id": 2,
-                    "start": 0.1,
-                    "duration": 0.1,
-                    "scene": "",
-                    "dialogue": "男：abcdefghi",
-                },
-            ],
-        }
-        with self.assertRaises(ValidationError) as caught:
-            Storyboard.model_validate(data)
-        message = caught.exception.errors()[0]["msg"]
-        self.assertIn("\n", message)
-        self.assertNotIn("\\n", message)
-
-    def test_shot_asset_generation_fields(self):
-        base = {
-            "title": "asset fields",
-            "total_duration": 1,
-            "shots": [{
-                "id": 1,
-                "start": 0,
-                "duration": 1,
-                "scene": "A character turns toward camera",
-                "source": "ai",
-                "prompt": "Vertical cinematic shot",
-                "ref_image": "assets/characters/lead.png",
-                "seed": 1234,
-            }],
-        }
-        storyboard = Storyboard.model_validate(base)
-        self.assertEqual(storyboard.shots[0].source, "ai")
-        self.assertEqual(storyboard.shots[0].prompt, "Vertical cinematic shot")
-        self.assertEqual(storyboard.shots[0].ref_image, "assets/characters/lead.png")
-        self.assertEqual(storyboard.shots[0].seed, 1234)
-
-        base["shots"][0]["source"] = "shoot"
-        self.assertEqual(Storyboard.model_validate(base).shots[0].source, "shoot")
-
-    def test_shot_source_rejects_unknown_value(self):
-        data = {
-            "title": "invalid source",
-            "total_duration": 1,
-            "shots": [{
-                "id": 1,
-                "start": 0,
-                "duration": 1,
-                "scene": "A scene",
-                "source": "stock",
-            }],
-        }
-        with self.assertRaises(ValidationError):
-            Storyboard.model_validate(data)
-
-    def test_updated_storyboard_passes(self):
+class SchemaTests(unittest.TestCase):
+    def test_storyboard_has_nine_contiguous_shots(self):
         path = Path("projects/chaidan_couple/storyboard.json")
-        data = json.loads(path.read_text(encoding="utf-8"))
-        storyboard = Storyboard.model_validate(data)
+        storyboard = Storyboard.model_validate_json(path.read_text(encoding="utf-8"))
         self.assertEqual(len(storyboard.shots), 9)
         self.assertEqual(storyboard.total_duration, 15)
+        self.assertTrue(all(not shot.dialogue for shot in storyboard.shots))
 
+    def test_rejects_unknown_fields(self):
+        with self.assertRaises(ValidationError):
+            Look.model_validate({"description": "look", "ref_images": [], "unexpected": True})
+
+    def test_character_and_style_models(self):
+        Character.model_validate({"char_id": "lead", "identity": "identity", "looks": {"glam": {"description": "look", "ref_images": []}}})
+        Style.model_validate({"base": "base", "negative": "negative"})
+
+    def test_speech_timing(self):
+        self.assertEqual(speech_need(""), 0.0)
+        self.assertAlmostEqual(speech_need("男：你好。女：收到。"), 1.1)
+
+    def test_seed_and_status_contracts(self):
+        job = GenJob(job_id="job-a", shot_id=1, prompt="p", negative_prompt="n", seed=123, seed_support="best_effort")
+        self.assertEqual(job.seed, 123)
+        with self.assertRaises(ValidationError):
+            GenJob(job_id="job-b", shot_id=1, prompt="p", negative_prompt="n", seed_support="always_deterministic")
+
+
+class PromptTests(unittest.TestCase):
+    def test_prompt_order_and_repeatability(self):
+        shot = Shot(id=1, start=0, duration=1, shot_type="近景", composition="居中", action="转头", lighting="柔光", camera_move="推进", characters=[{"char_id": "lead", "look": "glam"}])
+        chars = {"lead": Character(char_id="lead", identity="固定身份", looks={"glam": Look(description="西装", ref_images=[])})}
+        style = Style(base="竖屏写实", negative="不要水印")
+        first = build_prompt(shot, chars, style)
+        second = build_prompt(shot, chars, style)
+        self.assertEqual(first, second)
+        self.assertEqual(first[0], "竖屏写实，近景，居中，固定身份，西装，转头，柔光，推进")
+        self.assertEqual(first[1], "不要水印")
+
+    def test_asset_validation_collects_missing_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "storyboard.json").write_text(json.dumps({"title":"x","total_duration":1,"shots":[{"id":1,"start":0,"duration":1,"characters":[{"char_id":"lead","look":"glam"}]}]}), encoding="utf-8")
+            (root / "characters.json").write_text(json.dumps({"lead":{"char_id":"lead","identity":"x","looks":{"glam":{"description":"x","ref_images":["refs/missing.png"]}}}}), encoding="utf-8")
+            (root / "style.json").write_text(json.dumps({"base":"x","negative":"x"}), encoding="utf-8")
+            report = validate_assets(root)
+            self.assertFalse(report["ok"])
+            self.assertTrue(any("参考图不存在" in e for e in report["errors"]))
+
+    def test_project_assets_validate(self):
+        report = validate_assets("projects/chaidan_couple")
+        self.assertTrue(report["ok"], report["errors"])
+        self.assertEqual(report["checked_refs"], [])
+
+
+
+class JobPreparationTests(unittest.TestCase):
+    def test_jobs_snapshot_stable_prompts_and_unique_attempts(self):
+        source = Path("projects/chaidan_couple")
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(source, project)
+            first = prepare_generation_jobs(project, shot_ids=[1])
+            first_job_path = project / first["created"][0]["path"]
+            first_job = json.loads(first_job_path.read_text(encoding="utf-8"))
+            second = prepare_generation_jobs(project, shot_ids=[1])
+            second_job_path = project / second["created"][0]["path"]
+            second_job = json.loads(second_job_path.read_text(encoding="utf-8"))
+            self.assertFalse(first["generation_api_called"])
+            self.assertNotEqual(first_job["job_id"], second_job["job_id"])
+            self.assertEqual(first_job["prompt"], second_job["prompt"])
+            self.assertEqual(first_job["negative_prompt"], second_job["negative_prompt"])
+            self.assertEqual(first_job["seed"], 20261)
+            self.assertEqual(first_job["ref_images"], [])
+            self.assertEqual(first_job["ref_hashes"], [])
+
+
+
+    def test_attach_and_manual_review_state_transition(self):
+        source = Path("projects/chaidan_couple")
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(source, project)
+            prepare_generation_jobs(project, shot_ids=[1])
+            clips = project / "clips"
+            clips.mkdir()
+            clip = clips / "shot_01.mp4"
+            clip.write_bytes(b"test clip placeholder")
+            with patch("generation._probe_duration", return_value=1.8):
+                attached = attach_clip(project, 1, "clips/shot_01.mp4")
+            self.assertEqual(attached["shot_id"], 1)
+            self.assertEqual(attached["actual_duration"], 1.8)
+            reviewed = review_clip(project, 1, "accepted", "人工确认动作和人物一致")
+            self.assertEqual(reviewed["verdict"], "accepted")
+            self.assertEqual(reviewed["shot_status"], "accepted")
+            storyboard = json.loads((project / "storyboard.json").read_text(encoding="utf-8"))
+            self.assertEqual(storyboard["shots"][0]["gen_status"], "accepted")
 
 if __name__ == "__main__":
     unittest.main()

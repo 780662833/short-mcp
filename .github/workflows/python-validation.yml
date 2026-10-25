@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - feat/chaidan-storyboard-validation
+      - feat/character-aware-generation-jobs
 
 jobs:
   test:

@@ -1,0 +1,30 @@
+{
+  "male_lead": {
+    "char_id": "male_lead",
+    "identity": "同一位成年男性角色，亚洲面孔，面部结构与发型跨镜头保持一致",
+    "looks": {
+      "glam": {
+        "description": "深色修身西装，发型整齐，站姿挺拔，外表精致",
+        "ref_images": []
+      },
+      "real": {
+        "description": "白色旧背心和宽松大裤衩，头发凌乱，放松微驼背",
+        "ref_images": []
+      }
+    }
+  },
+  "female_lead": {
+    "char_id": "female_lead",
+    "identity": "同一位成年女性角色，亚洲面孔，面部结构跨镜头保持一致",
+    "looks": {
+      "glam": {
+        "description": "精致妆容、长发造型、时尚外出服装和高跟鞋",
+        "ref_images": []
+      },
+      "real": {
+        "description": "素颜状态，头发随意夹起，穿宽松恐龙睡衣，居家松弛感",
+        "ref_images": []
+      }
+    }
+  }
+}
