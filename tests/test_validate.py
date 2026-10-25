@@ -1,4 +1,5 @@
 import json
+import math
 import unittest
 from pathlib import Path
 
@@ -16,6 +17,26 @@ class SpeechTimingTests(unittest.TestCase):
 
     def test_single_turn_has_no_turn_gap(self):
         self.assertAlmostEqual(speech_need("女：剪蓝线！"), 0.6)
+
+    def test_rejects_non_finite_timeline_values(self):
+        data = {
+            "title": "invalid",
+            "total_duration": math.inf,
+            "shots": [{"id": 1, "start": 0, "duration": math.inf, "scene": ""}],
+        }
+        with self.assertRaises(ValidationError):
+            Storyboard.model_validate(data)
+
+    def test_timeline_tolerance_accepts_float_rounding_boundary(self):
+        data = {
+            "title": "tolerance",
+            "total_duration": 0.31,
+            "shots": [
+                {"id": 1, "start": 0, "duration": 0.3, "scene": ""},
+                {"id": 2, "start": 0.31, "duration": 0.01, "scene": ""},
+            ],
+        }
+        Storyboard.model_validate(data)
 
     def test_original_storyboard_reports_all_overruns(self):
         path = Path("projects/chaidan_couple/storyboard.json")
