@@ -127,6 +127,141 @@ def validate_generation_readiness(project: str | Path = DEFAULT_PROJECT) -> dict
     }
 
 
+def project_status(project: str | Path = DEFAULT_PROJECT) -> dict:
+    """Read-only project snapshot: structure/readiness, per-shot state, attempts, and blockers."""
+    root = _project_path(project)
+    validation = validate_assets(root)
+    if not validation["structure_ok"]:
+        return {
+            "project": root.name,
+            "status": "invalid",
+            "structure_ok": False,
+            "ready": False,
+            "errors": list(validation["errors"]),
+            "warnings": list(validation["warnings"]),
+            "missing_references": [],
+            "blocked_tasks": [{"scope": "project", "reason": "分镜或项目结构校验失败"}],
+            "shots": [],
+            "generation_api_called": False,
+        }
+
+    storyboard, characters, _style, load_errors = _load_project(root)
+    if load_errors:
+        return {
+            "project": root.name,
+            "status": "invalid",
+            "structure_ok": False,
+            "ready": False,
+            "errors": load_errors,
+            "warnings": list(validation["warnings"]),
+            "missing_references": [],
+            "blocked_tasks": [{"scope": "project", "reason": "角色配置校验失败"}],
+            "shots": [],
+            "generation_api_called": False,
+        }
+
+    jobs_by_shot: dict[int, list[dict]] = {}
+    job_warnings: list[str] = []
+    for job_path in _job_files(root):
+        try:
+            data = _load_json(job_path)
+            shot_id = int(data["shot_id"])
+            attempt = int(data["attempt"])
+            if attempt < 1:
+                raise ValueError("attempt 必须大于等于 1")
+            jobs_by_shot.setdefault(shot_id, []).append({
+                "job_id": str(data.get("job_id", job_path.stem)),
+                "attempt": attempt,
+                "status": str(data.get("status", "unknown")),
+                "model": str(data.get("model", "")),
+                "params": data.get("params", {}),
+                "seed": data.get("seed"),
+                "seed_support": str(data.get("seed_support", "none")),
+                "clip": str(data.get("clip", "")),
+                "expected_clip_path": str(data.get("expected_clip_path", "")),
+                "manifest": job_path.relative_to(root).as_posix(),
+            })
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            job_warnings.append(f"任务单读取失败 {job_path.relative_to(root).as_posix()}: {exc}")
+
+    missing_by_look: dict[tuple[str, str], set[int]] = {}
+    missing_by_shot: dict[int, list[dict]] = {}
+    shot_rows: list[dict] = []
+    blocked_tasks: list[dict] = []
+
+    for shot in storyboard.shots:
+        shot_missing: list[dict] = []
+        for item in shot.characters:
+            look = characters[item.char_id].looks[item.look]
+            existing = []
+            for ref in look.ref_images:
+                try:
+                    ref_path = _safe_project_file(root, ref)
+                    if ref_path.is_file():
+                        existing.append(ref)
+                except (OSError, ValueError):
+                    continue
+            if not existing:
+                key = (item.char_id, item.look)
+                missing_by_look.setdefault(key, set()).add(shot.id)
+                missing_item = {
+                    "char_id": item.char_id,
+                    "look": item.look,
+                    "configured_refs": list(look.ref_images),
+                }
+                if missing_item not in shot_missing:
+                    shot_missing.append(missing_item)
+        if shot_missing:
+            missing_by_shot[shot.id] = shot_missing
+
+        attempts = sorted(
+            jobs_by_shot.get(shot.id, []),
+            key=lambda job: (job["attempt"], job["job_id"]),
+        )
+        latest = attempts[-1] if attempts else None
+        row = {
+            "shot_id": shot.id,
+            "start": shot.start,
+            "duration": shot.duration,
+            "gen_status": shot.gen_status,
+            "clip": shot.clip,
+            "current_attempt": latest["attempt"] if latest else 0,
+            "latest_job": latest,
+            "attempt_count": len(attempts),
+            "missing_references": shot_missing,
+        }
+        shot_rows.append(row)
+        if shot_missing:
+            blocked_tasks.append({
+                "shot_id": shot.id,
+                "reason": "missing_references",
+                "details": shot_missing,
+            })
+
+    missing_references = [
+        {
+            "char_id": char_id,
+            "look": look,
+            "shot_ids": sorted(shot_ids),
+        }
+        for (char_id, look), shot_ids in sorted(missing_by_look.items())
+    ]
+    readiness = validate_generation_readiness(root)
+    return {
+        "project": root.name,
+        "status": "ready" if readiness["ready"] else "blocked",
+        "structure_ok": True,
+        "ready": bool(readiness["ready"]),
+        "errors": [],
+        "readiness_errors": list(readiness["readiness_errors"]),
+        "warnings": list(validation["warnings"]) + job_warnings,
+        "missing_references": missing_references,
+        "blocked_tasks": blocked_tasks,
+        "shots": shot_rows,
+        "generation_api_called": False,
+    }
+
+
 def build_prompt(shot: Shot, chars: dict[str, Character], style: Style) -> tuple[str, str, list[str]]:
     # Transition ("half") shots retain the glam visual language; fully-real shots
     # switch to base_real. The rule is deterministic for mixed-character shots.
