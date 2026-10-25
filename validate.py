@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import re
 import sys
 from pathlib import Path
@@ -9,8 +10,25 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 
 ROLE = r"(男&女|男|女)[：:]"
-CHARS_PER_SEC = 5.0
-TURN_GAP = 0.3
+CHARS_PER_SEC_ENV = "SHORT_MCP_CHARS_PER_SEC"
+TURN_GAP_ENV = "SHORT_MCP_TURN_GAP"
+
+
+def _timing_setting(name: str, default: float, minimum: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name}必须是数值，实际为{raw!r}") from exc
+    if not math.isfinite(value) or value < minimum:
+        raise ValueError(f"{name}必须是有限数值且不小于{minimum:g}")
+    return value
+
+
+CHARS_PER_SEC = _timing_setting(CHARS_PER_SEC_ENV, 5.0, 0.000001)
+TURN_GAP = _timing_setting(TURN_GAP_ENV, 0.3, 0.0)
 TIMELINE_TOLERANCE = 0.01
 
 
@@ -93,7 +111,7 @@ class Storyboard(BaseModel):
             )
 
         if errors:
-            raise ValueError("\\n" + "\\n".join(errors))
+            raise ValueError("\\n".join(errors))
         return self
 
 
