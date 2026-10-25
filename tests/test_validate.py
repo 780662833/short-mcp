@@ -2,11 +2,12 @@ import json
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from pydantic import ValidationError
 
-from generation import build_prompt, prepare_generation_jobs, validate_assets
+from generation import attach_clip, build_prompt, prepare_generation_jobs, review_clip, validate_assets
 from schemas import Character, GenJob, Look, Shot, Storyboard, Style, speech_need
 
 
@@ -85,6 +86,27 @@ class JobPreparationTests(unittest.TestCase):
             self.assertEqual(first_job["ref_images"], [])
             self.assertEqual(first_job["ref_hashes"], [])
 
+
+
+    def test_attach_and_manual_review_state_transition(self):
+        source = Path("projects/chaidan_couple")
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(source, project)
+            prepare_generation_jobs(project, shot_ids=[1])
+            clips = project / "clips"
+            clips.mkdir()
+            clip = clips / "shot_01.mp4"
+            clip.write_bytes(b"test clip placeholder")
+            with patch("generation._probe_duration", return_value=1.8):
+                attached = attach_clip(project, 1, "clips/shot_01.mp4")
+            self.assertEqual(attached["shot_id"], 1)
+            self.assertEqual(attached["actual_duration"], 1.8)
+            reviewed = review_clip(project, 1, "accepted", "人工确认动作和人物一致")
+            self.assertEqual(reviewed["verdict"], "accepted")
+            self.assertEqual(reviewed["shot_status"], "accepted")
+            storyboard = json.loads((project / "storyboard.json").read_text(encoding="utf-8"))
+            self.assertEqual(storyboard["shots"][0]["gen_status"], "accepted")
 
 if __name__ == "__main__":
     unittest.main()
