@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from generation import attach_clip, build_prompt, prepare_generation_jobs, review_clip, validate_assets, validate_generation_readiness
+from generation import _safe_project_file, attach_clip, build_prompt, prepare_generation_jobs, review_clip, validate_assets, validate_generation_readiness
 from mcp_server import _safe_project_arg
 from schemas import Character, GenJob, Look, Shot, Storyboard, Style, speech_need
 
@@ -85,6 +85,9 @@ class PromptTests(unittest.TestCase):
             _safe_project_arg("../../etc")
         with self.assertRaisesRegex(ValueError, "不允许包含"):
             _safe_project_arg("projects/../etc")
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, "不能包含"):
+                _safe_project_file(Path(tmp), "clips/../storyboard.json")
 
     def test_storyboard_transition_shots_use_half_look(self):
         path = Path("projects/chaidan_couple/storyboard.json")
