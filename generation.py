@@ -22,7 +22,10 @@ def _project_path(project: str | Path = DEFAULT_PROJECT) -> Path:
 
 
 def _safe_project_file(project_root: Path, relative: str) -> Path:
-    candidate = (project_root / relative).resolve()
+    raw = Path(relative)
+    if raw.is_absolute() or ".." in raw.parts:
+        raise ValueError(f"路径必须是项目内相对路径且不能包含 '..'：{relative}")
+    candidate = (project_root / raw).resolve()
     if candidate != project_root and project_root not in candidate.parents:
         raise ValueError(f"路径越界，必须位于项目目录内：{relative}")
     return candidate
