@@ -5,7 +5,8 @@ on:
   push:
     branches:
       - main
-      - feat/chaidan-storyboard-validation\n      - feat/character-aware-generation-jobs
+      - feat/chaidan-storyboard-validation
+      - feat/character-aware-generation-jobs
 
 jobs:
   test:
