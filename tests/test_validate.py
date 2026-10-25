@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from generation import audit_reference_images, _safe_project_file, attach_clip, build_prompt, prepare_generation_jobs, project_status, review_clip, validate_assets, validate_clip, validate_generation_readiness
+from generation import build_reference_pack_plan, audit_reference_images, _safe_project_file, attach_clip, build_prompt, prepare_generation_jobs, project_status, review_clip, validate_assets, validate_clip, validate_generation_readiness
 from mcp_server import _safe_project_arg
 from schemas import Character, GenJob, Look, Shot, Storyboard, Style, speech_need
 
@@ -74,6 +74,27 @@ class PromptTests(unittest.TestCase):
             readiness = validate_generation_readiness(root)
             self.assertFalse(readiness["ready"])
             self.assertTrue(any("lead/glam" in issue for issue in readiness["readiness_errors"]))
+
+    def test_reference_pack_plan_lists_all_looks_without_creating_images(self):
+        source = Path("projects/chaidan_couple")
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(source, project)
+            before = sorted(str(path.relative_to(project)) for path in project.rglob("*") if path.is_file())
+            report = build_reference_pack_plan(project)
+            after = sorted(str(path.relative_to(project)) for path in project.rglob("*") if path.is_file())
+            self.assertEqual(report["status"], "needs_reference_images")
+            self.assertEqual(report["storyboard_shot_count"], 9)
+            self.assertEqual(report["required_look_count"], 6)
+            self.assertEqual(report["missing_look_count"], 6)
+            self.assertFalse(report["generation_api_called"])
+            self.assertFalse(report["images_created"])
+            self.assertTrue(report["human_review_required"])
+            self.assertEqual(before, after)
+            male_glam = next(item for item in report["items"] if item["char_id"] == "male_lead" and item["look"] == "glam")
+            self.assertEqual(male_glam["suggested_target_path"], "refs/male_lead_glam.png")
+            self.assertTrue(male_glam["used_by_shots"])
+            self.assertIn("同一位成年男性角色", male_glam["reference_brief"])
 
     def test_reference_audit_reports_missing_looks_and_keeps_generation_disabled(self):
         source = Path("projects/chaidan_couple")
