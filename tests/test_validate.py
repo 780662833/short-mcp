@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from generation import _safe_project_file, attach_clip, build_prompt, prepare_generation_jobs, project_status, review_clip, validate_assets, validate_generation_readiness
+from generation import _safe_project_file, attach_clip, build_prompt, prepare_generation_jobs, project_status, review_clip, validate_assets, validate_clip, validate_generation_readiness
 from mcp_server import _safe_project_arg
 from schemas import Character, GenJob, Look, Shot, Storyboard, Style, speech_need
 
@@ -229,6 +229,55 @@ class JobPreparationTests(unittest.TestCase):
             storyboard_before = (project / "storyboard.json").read_bytes()
             project_status(project)
             self.assertEqual(storyboard_before, (project / "storyboard.json").read_bytes())
+
+    def test_validate_clip_passes_vertical_video_and_reports_missing_audio_as_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(Path("projects/chaidan_couple"), project)
+            clip_path = project / "clips" / "shot_01.mp4"
+            clip_path.parent.mkdir(parents=True, exist_ok=True)
+            clip_path.write_bytes(b"fake mp4 bytes")
+            probe = {
+                "streams": [{
+                    "codec_type": "video", "codec_name": "h264", "width": 720, "height": 1280,
+                    "avg_frame_rate": "30/1", "duration": "2.0"
+                }],
+                "format": {"duration": "2.0"}
+            }
+            with patch("generation.subprocess.run", return_value=type("Result", (), {"stdout": json.dumps(probe)})()):
+                report = validate_clip(project, "clips/shot_01.mp4", shot_id=1)
+            self.assertEqual(report["status"], "passed")
+            self.assertTrue(report["checks"]["vertical"])
+            self.assertTrue(report["checks"]["duration_match"])
+            self.assertFalse(report["checks"]["has_audio"])
+            self.assertTrue(any("音频流" in item for item in report["warnings"]))
+            self.assertTrue(report["human_review_required"])
+
+    def test_validate_clip_fails_landscape_and_required_audio(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(Path("projects/chaidan_couple"), project)
+            clip_path = project / "clips" / "bad.mp4"
+            clip_path.parent.mkdir(parents=True, exist_ok=True)
+            clip_path.write_bytes(b"fake mp4 bytes")
+            probe = {
+                "streams": [{
+                    "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080,
+                    "avg_frame_rate": "30/1", "duration": "2.0"
+                }],
+                "format": {"duration": "2.0"}
+            }
+            with patch("generation.subprocess.run", return_value=type("Result", (), {"stdout": json.dumps(probe)})()):
+                report = validate_clip(project, "clips/bad.mp4", require_audio=True)
+            self.assertEqual(report["status"], "failed")
+            self.assertTrue(any("不是竖屏" in item for item in report["errors"]))
+            self.assertTrue(any("音频流" in item for item in report["errors"]))
+
+    def test_validate_clip_rejects_project_path_traversal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = validate_clip(Path(tmp), "../outside.mp4")
+            self.assertEqual(report["status"], "failed")
+            self.assertTrue(report["errors"])
 
     def test_attach_and_manual_review_state_transition(self):
         source = Path("projects/chaidan_couple")

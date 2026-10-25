@@ -8,6 +8,7 @@ from generation import prepare_generation_jobs as prepare_jobs_impl
 from generation import project_status as project_status_impl
 from generation import review_clip as review_clip_impl
 from generation import validate_assets as validate_assets_impl
+from generation import validate_clip as validate_clip_impl
 from generation import validate_generation_readiness as validate_readiness_impl
 
 mcp = FastMCP("short-mcp")
@@ -61,6 +62,12 @@ def prepare_generation_jobs(
 ) -> dict:
     """Build deterministic prompt snapshots and job manifests. Does not call generation APIs."""
     return prepare_jobs_impl(_safe_project_arg(project), shot_ids, model=model, params=params, seed_support=seed_support)
+
+
+@mcp.tool()
+def validate_clip(project: str = "projects/chaidan_couple", path: str = "", shot_id: int | None = None, require_audio: bool = False, min_height: int = 960) -> dict:
+    """Read-only ffprobe checks for clip integrity, vertical format, resolution, duration, and audio presence."""
+    return validate_clip_impl(_safe_project_arg(project), path, shot_id=shot_id, require_audio=require_audio, min_height=min_height)
 
 
 @mcp.tool()
