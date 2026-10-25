@@ -4,7 +4,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -53,6 +53,10 @@ class Shot(BaseModel):
     subtitle: str = ""
     sfx: str = ""
     clip: str = ""
+    source: Literal["ai", "shoot"] = "ai"
+    prompt: str = ""
+    ref_image: str = ""
+    seed: int | None = None
 
 
 class Storyboard(BaseModel):
