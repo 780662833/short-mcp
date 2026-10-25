@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from generation import attach_clip, build_prompt, prepare_generation_jobs, review_clip, validate_assets
+from generation import attach_clip, build_prompt, prepare_generation_jobs, review_clip, validate_assets, validate_generation_readiness
 from schemas import Character, GenJob, Look, Shot, Storyboard, Style, speech_need
 
 
@@ -67,11 +67,52 @@ class PromptTests(unittest.TestCase):
 
 
 class JobPreparationTests(unittest.TestCase):
+    def _add_real_refs(self, project: Path):
+        refs = project / "refs"
+        refs.mkdir(exist_ok=True)
+        for name, data in (("male_glam.png", b"male-v1"), ("female_glam.png", b"female-v1")):
+            (refs / name).write_bytes(data)
+        chars_path = project / "characters.json"
+        chars = json.loads(chars_path.read_text(encoding="utf-8"))
+        chars["male_lead"]["looks"]["glam"]["ref_images"] = ["refs/male_glam.png"]
+        chars["female_lead"]["looks"]["glam"]["ref_images"] = ["refs/female_glam.png"]
+        chars_path.write_text(json.dumps(chars, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def test_missing_reference_blocks_jobs_without_prepared_manifests(self):
+        source = Path("projects/chaidan_couple")
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(source, project)
+            report = validate_generation_readiness(project)
+            self.assertFalse(report["ready"])
+            self.assertTrue(any("male_lead/glam" in e for e in report["readiness_errors"]))
+            with self.assertRaisesRegex(ValueError, "生成就绪校验失败"):
+                prepare_generation_jobs(project, shot_ids=[1])
+            jobs_dir = project / "jobs"
+            self.assertFalse(jobs_dir.exists() and list(jobs_dir.glob("*.json")))
+            storyboard = json.loads((project / "storyboard.json").read_text(encoding="utf-8"))
+            self.assertTrue(all(s.get("gen_status", "pending") == "pending" for s in storyboard["shots"]))
+
+    def test_reference_hash_changes_when_file_content_changes(self):
+        source = Path("projects/chaidan_couple")
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(source, project)
+            self._add_real_refs(project)
+            first = validate_assets(project)
+            ref = project / "refs" / "male_glam.png"
+            ref.write_bytes(b"male-v2-content-changed")
+            second = validate_assets(project)
+            first_hash = next(x["sha256"] for x in first["checked_refs"] if x["path"] == "refs/male_glam.png")
+            second_hash = next(x["sha256"] for x in second["checked_refs"] if x["path"] == "refs/male_glam.png")
+            self.assertNotEqual(first_hash, second_hash)
+
     def test_jobs_snapshot_stable_prompts_and_unique_attempts(self):
         source = Path("projects/chaidan_couple")
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "project"
             shutil.copytree(source, project)
+            self._add_real_refs(project)
             first = prepare_generation_jobs(project, shot_ids=[1])
             first_job_path = project / first["created"][0]["path"]
             first_job = json.loads(first_job_path.read_text(encoding="utf-8"))
@@ -83,8 +124,12 @@ class JobPreparationTests(unittest.TestCase):
             self.assertEqual(first_job["prompt"], second_job["prompt"])
             self.assertEqual(first_job["negative_prompt"], second_job["negative_prompt"])
             self.assertEqual(first_job["seed"], 20261)
-            self.assertEqual(first_job["ref_images"], [])
-            self.assertEqual(first_job["ref_hashes"], [])
+            self.assertEqual(first_job["attempt"], 1)
+            self.assertEqual(first_job["expected_clip_path"], "clips/shot_01_try1.mp4")
+            self.assertEqual(len(first_job["ref_images"]), 2)
+            self.assertEqual(len(first_job["ref_hashes"]), 2)
+            self.assertEqual(second_job["attempt"], 2)
+            self.assertEqual(second_job["expected_clip_path"], "clips/shot_01_try2.mp4")
 
 
 
@@ -93,15 +138,17 @@ class JobPreparationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "project"
             shutil.copytree(source, project)
+            self._add_real_refs(project)
             prepare_generation_jobs(project, shot_ids=[1])
             clips = project / "clips"
             clips.mkdir()
-            clip = clips / "shot_01.mp4"
+            clip = clips / "shot_01_try1.mp4"
             clip.write_bytes(b"test clip placeholder")
             with patch("generation._probe_duration", return_value=1.8):
-                attached = attach_clip(project, 1, "clips/shot_01.mp4")
+                attached = attach_clip(project, 1, "clips/shot_01_try1.mp4")
             self.assertEqual(attached["shot_id"], 1)
             self.assertEqual(attached["actual_duration"], 1.8)
+            self.assertTrue(attached["warnings"])
             reviewed = review_clip(project, 1, "accepted", "人工确认动作和人物一致")
             self.assertEqual(reviewed["verdict"], "accepted")
             self.assertEqual(reviewed["shot_status"], "accepted")
