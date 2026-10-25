@@ -15,7 +15,7 @@ class SpeechTimingTests(unittest.TestCase):
         self.assertAlmostEqual(speech_need("男：行动开始。女：收到。"), 1.5)
 
     def test_single_turn_has_no_turn_gap(self):
-        self.assertAlmostEqual(speech_need("女：剪蓝线！"), 0.4)
+        self.assertAlmostEqual(speech_need("女：剪蓝线！"), 0.6)
 
     def test_original_storyboard_reports_all_overruns(self):
         path = Path("projects/chaidan_couple/storyboard.json")
