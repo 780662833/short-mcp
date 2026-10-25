@@ -83,7 +83,34 @@ def validate_assets(project: str | Path = DEFAULT_PROJECT) -> dict:
                     checked_refs.append({"path": ref, "sha256": digest})
                 except (OSError, ValueError) as exc:
                     errors.append(f"镜头{shot.id}: 参考图路径无效 {ref!r}: {exc}")
-    return {"ok": not errors, "errors": errors, "warnings": warnings, "checked_refs": checked_refs}
+    return {"ok": not errors, "structure_ok": not errors, "ready": not errors, "errors": errors, "readiness_errors": [], "warnings": warnings, "checked_refs": checked_refs}
+
+
+def validate_generation_readiness(project: str | Path = DEFAULT_PROJECT) -> dict:
+    """Validate structure plus at least one existing reference image for each used character/look."""
+    root = _project_path(project)
+    structural = validate_assets(root)
+    errors = list(structural["errors"])
+    if errors:
+        return {**structural, "ready": False, "readiness_errors": []}
+    storyboard, characters, _style, _load_errors = _load_project(root)
+    missing_refs: set[tuple[str, str]] = set()
+    for shot in storyboard.shots:
+        for item in shot.characters:
+            char = characters[item.char_id]
+            look = char.looks[item.look]
+            if not look.ref_images:
+                missing_refs.add((item.char_id, item.look))
+    readiness_errors = [
+        f"缺少 {char_id}/{look} 参考图：该出场角色造型至少需要 1 张存在的参考图"
+        for char_id, look in sorted(missing_refs)
+    ]
+    return {
+        **structural,
+        "ready": not readiness_errors,
+        "readiness_errors": readiness_errors,
+        "errors": errors + readiness_errors,
+    }
 
 
 def build_prompt(shot: Shot, chars: dict[str, Character], style: Style) -> tuple[str, str, list[str]]:
@@ -111,9 +138,9 @@ def prepare_generation_jobs(
 ) -> dict:
     """Build deterministic prompts and unique per-attempt manifests; never calls a model."""
     root = _project_path(project)
-    validation = validate_assets(root)
-    if not validation["ok"]:
-        raise ValueError("素材校验失败：" + "；".join(validation["errors"]))
+    validation = validate_generation_readiness(root)
+    if not validation["ready"]:
+        raise ValueError("生成就绪校验失败：" + "；".join(validation["errors"]))
     storyboard, chars, style, _ = _load_project(root)
     wanted = set(shot_ids) if shot_ids is not None else {s.id for s in storyboard.shots}
     found = {s.id for s in storyboard.shots}
@@ -133,10 +160,22 @@ def prepare_generation_jobs(
             if not ref_path.is_file():
                 raise ValueError(f"参考图不存在：{ref}")
             ref_hashes.append(hashlib.sha256(ref_path.read_bytes()).hexdigest())
-        job_id = f"shot-{shot.id:02d}-{uuid.uuid4().hex[:12]}"
+        existing_attempts = []
+        for old_path in _job_files(root):
+            try:
+                old_data = _load_json(old_path)
+                if old_data.get("shot_id") == shot.id:
+                    existing_attempts.append(int(old_data.get("attempt", 0)))
+            except (OSError, ValueError, TypeError):
+                continue
+        attempt = max(existing_attempts, default=0) + 1
+        job_id = f"shot-{shot.id:02d}-try{attempt}-{uuid.uuid4().hex[:8]}"
+        expected_clip_path = f"clips/shot_{shot.id:02d}_try{attempt}.mp4"
         job = GenJob(
             job_id=job_id,
             shot_id=shot.id,
+            attempt=attempt,
+            expected_clip_path=expected_clip_path,
             prompt=prompt,
             negative_prompt=negative,
             ref_images=refs,
@@ -152,7 +191,7 @@ def prepare_generation_jobs(
             raise FileExistsError(f"任务单已存在，拒绝覆盖：{path}")
         path.write_text(job.model_dump_json(indent=2) + "\n", encoding="utf-8")
         shot.gen_status = "prepared"
-        created.append({"job_id": job_id, "shot_id": shot.id, "path": path.relative_to(root).as_posix(), "prompt": prompt})
+        created.append({"job_id": job_id, "shot_id": shot.id, "attempt": attempt, "expected_clip_path": expected_clip_path, "path": path.relative_to(root).as_posix(), "prompt": prompt})
     (root / "storyboard.json").write_text(
         json.dumps(storyboard.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -185,8 +224,10 @@ def attach_clip(project: str | Path, shot_id: int, path: str) -> dict:
     clip_path = _safe_project_file(root, path)
     if not clip_path.is_file():
         raise FileNotFoundError(f"视频素材不存在：{path}")
-    if shot.clip and Path(shot.clip).as_posix() == Path(path).as_posix():
-        raise ValueError(f"该素材已经挂接，拒绝重复覆盖：{path}")
+    if clip_path.exists() and clip_path.stat().st_size == 0:
+        raise ValueError(f"视频素材为空文件：{path}")
+    if not clip_path.name.lower().endswith(".mp4"):
+        raise ValueError("输出素材必须使用 .mp4 扩展名，且文件名应与任务单 expected_clip_path 一致")
     actual_duration = _probe_duration(clip_path)
     pending_jobs = []
     for job_path in _job_files(root):
@@ -195,7 +236,12 @@ def attach_clip(project: str | Path, shot_id: int, path: str) -> dict:
             pending_jobs.append((job_path, GenJob.model_validate(data)))
     if not pending_jobs:
         raise ValueError(f"镜头{shot_id}没有 prepared 状态的任务单；请先准备新任务")
-    job_path, job = max(pending_jobs, key=lambda pair: (pair[0].stat().st_mtime_ns, pair[0].name))
+    job_path, job = max(pending_jobs, key=lambda pair: (pair[1].attempt, pair[0].name))
+    expected_path = Path(job.expected_clip_path).as_posix()
+    if Path(path).as_posix() != expected_path:
+        raise ValueError(f"该任务的输出路径必须是 {expected_path}，拒绝把素材挂到其他尝试或覆盖旧版本")
+    if any(Path(root / j.clip).resolve() == clip_path for _p, j in [(p, GenJob.model_validate(_load_json(p))) for p in _job_files(root)] if j.clip):
+        raise ValueError(f"该视频路径已被历史任务使用，拒绝覆盖：{path}")
     job.status = "generated"
     job.clip = Path(path).as_posix()
     job.actual_duration = actual_duration
@@ -227,14 +273,17 @@ def review_clip(project: str | Path, shot_id: int, verdict: str, note: str = "")
             candidates.append((job_path, GenJob.model_validate(data)))
     if not candidates:
         raise ValueError(f"镜头{shot_id}没有待人工验收的 generated 任务")
-    job_path, job = max(candidates, key=lambda pair: (pair[0].stat().st_mtime_ns, pair[0].name))
+    job_path, job = max(candidates, key=lambda pair: (pair[1].attempt, pair[0].name))
     job.status = verdict
     job.review_note = note
     job_path.write_text(job.model_dump_json(indent=2) + "\n", encoding="utf-8")
     if verdict == "accepted":
+        shot.clip = job.clip
         shot.gen_status = "accepted"
     else:
-        # Preserve the rejected clip/job as history; a retry gets a new job and new clip path.
+        # Keep rejected clip only in its job manifest; storyboard.clip must not point to it.
+        if shot.clip and Path(shot.clip).as_posix() == Path(job.clip).as_posix():
+            shot.clip = ""
         shot.gen_status = "prepared"
     (root / "storyboard.json").write_text(
         json.dumps(storyboard.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n",

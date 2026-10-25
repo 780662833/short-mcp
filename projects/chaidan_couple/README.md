@@ -23,11 +23,13 @@ python -m unittest discover -s tests -v
 
 启动：`python mcp_server.py`
 
-- `validate_assets(project)`：只读检查分镜、角色、look 和参考图，汇总错误；
-- `prepare_generation_jobs(project, shot_ids?, model?, seed_support?)`：生成唯一任务单和稳定提示词快照，不调用生成 API；
+- `validate_assets(project)`：结构校验；检查分镜、角色、look 引用及已声明参考图路径。允许暂时为空的 `ref_images`，但不代表生成就绪；
+- `validate_generation_readiness(project)`：生成就绪门禁；要求每个实际出场的角色造型至少有一张存在的参考图；
+- `prepare_generation_jobs(project, shot_ids?, model?, seed_support?)`：先执行生成就绪门禁，通过后才生成任务单和稳定提示词快照，不调用生成 API；
+- 每次尝试具有递增 `attempt`、唯一 `job_id` 和独立输出路径（例如 `clips/shot_06_try2.mp4`），不得覆盖旧版本；
 - `attach_clip(project, shot_id, path)`：对已有视频运行 ffprobe，关联最新 prepared 任务；时长不足会返回警告；
 - `review_clip(project, shot_id, verdict, note?)`：仅记录明确人工验收结果，verdict 为 `accepted` 或 `rejected`。
 
-状态：`pending → prepared → generated → accepted/rejected`。拒绝后镜头状态回到 `prepared`，旧任务单仍保留；重新准备会创建新的任务单。素材挂接只登记现有文件，不会生成视频或覆盖媒体文件。
+状态：`pending → prepared → generated → accepted/rejected`。拒绝后镜头状态回到 `prepared`，旧任务单和旧素材保留在历史中，分镜 `clip` 不再指向被拒绝的素材；重新准备会创建新的尝试编号和输出路径。素材挂接只登记现有文件，不会生成视频或覆盖媒体文件。
 
 Seed 不能单独保证可复现。除非具体服务商明确保证确定性，否则应将其视为普通输入或 best-effort 设置。
