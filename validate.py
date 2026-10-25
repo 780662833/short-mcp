@@ -47,48 +47,53 @@ class Storyboard(BaseModel):
 
     @model_validator(mode="after")
     def check_timeline(self):
-        if not math.isfinite(self.total_duration):
-            raise ValueError("total_duration必须是有限数值")
-
+        errors = []
         t = 0.0
+        total_is_finite = math.isfinite(self.total_duration)
+        if not total_is_finite:
+            errors.append("total_duration必须是有限数值")
+
         for expected_id, shot in enumerate(self.shots, start=1):
-            if not math.isfinite(shot.start):
-                raise ValueError(f"镜头{shot.id}: start必须是有限数值")
-            if not math.isfinite(shot.duration):
-                raise ValueError(f"镜头{shot.id}: duration必须是有限数值")
             if shot.id != expected_id:
-                raise ValueError(
+                errors.append(
                     f"镜头编号应连续从1开始：第{expected_id}个位置实际是镜头{shot.id}"
                 )
-            if abs(shot.start - t) > TIMELINE_TOLERANCE + 1e-12:
-                raise ValueError(
-                    f"镜头{shot.id}: start应为{t:.3f}，实际{shot.start}"
-                )
-            t += shot.duration
 
-        if abs(t - self.total_duration) > TIMELINE_TOLERANCE + 1e-12:
-            raise ValueError(
-                f"时长之和{t:.3f} ≠ total_duration {self.total_duration}"
+            start_is_finite = math.isfinite(shot.start)
+            duration_is_finite = math.isfinite(shot.duration)
+            if not start_is_finite:
+                errors.append(f"镜头{shot.id}: start必须是有限数值")
+            if not duration_is_finite:
+                errors.append(f"镜头{shot.id}: duration必须是有限数值")
+
+            if start_is_finite and abs(shot.start - t) > TIMELINE_TOLERANCE + 1e-12:
+                errors.append(
+                    f"镜头{shot.id}: start应为{t:g}，实际{shot.start:g}"
+                )
+
+            if duration_is_finite:
+                t += shot.duration
+
+            if len(shot.subtitle) > 12:
+                errors.append(
+                    f"镜头{shot.id}: 字幕{len(shot.subtitle)}字，超过12字"
+                )
+
+            if duration_is_finite:
+                need = speech_need(shot.dialogue)
+                if need > shot.duration + TIMELINE_TOLERANCE:
+                    errors.append(
+                        f"镜头{shot.id}: 台词预计{need:.1f}s，"
+                        f"镜头{shot.duration:g}s，超出{need - shot.duration:.1f}s"
+                    )
+
+        if total_is_finite and abs(t - self.total_duration) > TIMELINE_TOLERANCE + 1e-12:
+            errors.append(
+                f"时长之和{t:g} ≠ total_duration {self.total_duration:g}"
             )
 
-        for shot in self.shots:
-            if len(shot.subtitle) > 12:
-                raise ValueError(
-                    f"镜头{shot.id}: 字幕超过12字（当前{len(shot.subtitle)}字）"
-                )
-
-        speech_errors = []
-        for shot in self.shots:
-            need = speech_need(shot.dialogue)
-            if need > shot.duration + TIMELINE_TOLERANCE:
-                speech_errors.append(
-                    f"镜头{shot.id}: 台词约需{need:.1f}秒，"
-                    f"镜头仅{shot.duration:g}秒（超出约{need - shot.duration:.1f}秒）；"
-                    "请删减台词、拆分或延长镜头"
-                )
-        if speech_errors:
-            raise ValueError("台词时长估算未通过：\n- " + "\n- ".join(speech_errors))
-
+        if errors:
+            raise ValueError("\\n" + "\\n".join(errors))
         return self
 
 
