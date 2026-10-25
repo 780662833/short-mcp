@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from generation import _safe_project_file, attach_clip, build_prompt, prepare_generation_jobs, review_clip, validate_assets, validate_generation_readiness
+from generation import _safe_project_file, attach_clip, build_prompt, prepare_generation_jobs, project_status, review_clip, validate_assets, validate_generation_readiness
 from mcp_server import _safe_project_arg
 from schemas import Character, GenJob, Look, Shot, Storyboard, Style, speech_need
 
@@ -185,6 +185,50 @@ class JobPreparationTests(unittest.TestCase):
             self.assertEqual(second_job["expected_clip_path"], "clips/shot_01_try2.mp4")
 
 
+
+    def test_project_status_reports_missing_refs_and_blocked_shots_read_only(self):
+        source = Path("projects/chaidan_couple")
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(source, project)
+            before = (project / "storyboard.json").read_bytes()
+            report = project_status(project)
+            after = (project / "storyboard.json").read_bytes()
+            self.assertEqual(before, after)
+            self.assertEqual(report["status"], "blocked")
+            self.assertTrue(report["structure_ok"])
+            self.assertFalse(report["ready"])
+            self.assertFalse(report["generation_api_called"])
+            self.assertTrue(report["missing_references"])
+            self.assertTrue(report["blocked_tasks"])
+            self.assertEqual(len(report["shots"]), 9)
+            shot1 = next(row for row in report["shots"] if row["shot_id"] == 1)
+            self.assertEqual(shot1["current_attempt"], 0)
+            self.assertTrue(shot1["missing_references"])
+
+    def test_project_status_reports_latest_attempt_model_params_and_seed_contract(self):
+        source = Path("projects/chaidan_couple")
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(source, project)
+            self._add_real_refs(project)
+            first = prepare_generation_jobs(
+                project, shot_ids=[1], model="test-model",
+                params={"width": 720, "height": 1280}, seed_support="best_effort"
+            )
+            self.assertEqual(first["status"], "prepared")
+            report = project_status(project)
+            shot1 = next(row for row in report["shots"] if row["shot_id"] == 1)
+            self.assertEqual(report["status"], "ready")
+            self.assertEqual(shot1["current_attempt"], 1)
+            self.assertEqual(shot1["latest_job"]["status"], "prepared")
+            self.assertEqual(shot1["latest_job"]["model"], "test-model")
+            self.assertEqual(shot1["latest_job"]["params"], {"width": 720, "height": 1280})
+            self.assertEqual(shot1["latest_job"]["seed_support"], "best_effort")
+            self.assertFalse(report["generation_api_called"])
+            storyboard_before = (project / "storyboard.json").read_bytes()
+            project_status(project)
+            self.assertEqual(storyboard_before, (project / "storyboard.json").read_bytes())
 
     def test_attach_and_manual_review_state_transition(self):
         source = Path("projects/chaidan_couple")
