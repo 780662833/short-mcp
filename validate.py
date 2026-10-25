@@ -111,7 +111,7 @@ class Storyboard(BaseModel):
             )
 
         if errors:
-            raise ValueError("\\n".join(errors))
+            raise ValueError("\n".join(errors))
         return self
 
 
