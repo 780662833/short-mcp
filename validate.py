@@ -1,0 +1,91 @@
+import json
+import sys
+from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
+
+class Shot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    start: float = Field(ge=0)
+    duration: float = Field(gt=0)
+    scene: str
+    dialogue: str = ""
+    subtitle: str = ""
+    sfx: str = ""
+    clip: str = ""
+
+
+class Storyboard(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str
+    total_duration: float = Field(gt=0)
+    bgm: str = ""
+    shots: list[Shot] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def check_timeline(self):
+        t = 0.0
+        for expected_id, shot in enumerate(self.shots, start=1):
+            if shot.id != expected_id:
+                raise ValueError(
+                    f"镜头编号应连续从1开始：第{expected_id}个位置实际是镜头{shot.id}"
+                )
+            if abs(shot.start - t) > 0.01:
+                raise ValueError(
+                    f"镜头{shot.id}: start应为{t:.3f}，实际{shot.start}"
+                )
+            t += shot.duration
+
+        if abs(t - self.total_duration) > 0.01:
+            raise ValueError(
+                f"时长之和{t:.3f} ≠ total_duration {self.total_duration}"
+            )
+
+        for shot in self.shots:
+            if len(shot.subtitle) > 12:
+                raise ValueError(
+                    f"镜头{shot.id}: 字幕超过12字（当前{len(shot.subtitle)}字）"
+                )
+        return self
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print("用法：python validate.py <storyboard.json>", file=sys.stderr)
+        return 2
+
+    path = Path(sys.argv[1])
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        storyboard = Storyboard.model_validate(data)
+    except FileNotFoundError:
+        print(f"错误：找不到文件：{path}", file=sys.stderr)
+        return 2
+    except json.JSONDecodeError as exc:
+        print(
+            f"JSON格式错误：第{exc.lineno}行，第{exc.colno}列：{exc.msg}",
+            file=sys.stderr,
+        )
+        return 1
+    except ValidationError as exc:
+        for error in exc.errors():
+            loc = ".".join(str(part) for part in error["loc"]) or "storyboard"
+            print(f"校验失败 [{loc}]：{error['msg']}", file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        print(f"校验失败：{exc}", file=sys.stderr)
+        return 1
+
+    print(
+        f"通过：{storyboard.title}，{len(storyboard.shots)}个镜头，"
+        f"共{storyboard.total_duration:g}秒"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
