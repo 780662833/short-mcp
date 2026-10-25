@@ -7,6 +7,10 @@
         "description": "深色修身西装，发型整齐，站姿挺拔，外表精致",
         "ref_images": []
       },
+      "half": {
+        "description": "造型正在松动的过渡状态：保留精致面部与部分正式穿搭，发型或衣着出现轻微凌乱",
+        "ref_images": []
+      },
       "real": {
         "description": "白色旧背心和宽松大裤衩，头发凌乱，放松微驼背",
         "ref_images": []
@@ -19,6 +23,10 @@
     "looks": {
       "glam": {
         "description": "精致妆容、长发造型、时尚外出服装和高跟鞋",
+        "ref_images": []
+      },
+      "half": {
+        "description": "妆发正在卸除的过渡状态：保留角色固定面部特征，妆容与发型呈现自然松动",
         "ref_images": []
       },
       "real": {
